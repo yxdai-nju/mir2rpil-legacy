@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+./miri run playground/simple.rs &> playground/simple.log

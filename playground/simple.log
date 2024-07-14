@@ -1,0 +1,139 @@
+$ rustfmt +miri --edition=2021 --config-path /Users/dnomkr/src/mir2rpil/rustfmt.toml --unstable-features --skip-children ...
+$ cargo +miri clippy --manifest-path /Users/dnomkr/src/mir2rpil/Cargo.toml --all-targets
+warning: unused imports: `CrateType` and `OptLevel`
+  --> src/bin/miri.rs:48:29
+   |
+48 | use rustc_session::config::{CrateType, ErrorOutputType, OptLevel};
+   |                             ^^^^^^^^^                   ^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: field `miri_config` is never read
+  --> src/bin/miri.rs:55:5
+   |
+54 | struct MiriCompilerCalls {
+   |        ----------------- field in this struct
+55 |     miri_config: miri::MiriConfig,
+   |     ^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: function `init_late_loggers` is never used
+   --> src/bin/miri.rs:464:4
+    |
+464 | fn init_late_loggers(early_dcx: &EarlyDiagCtxt, tcx: TyCtxt<'_>) {
+    |    ^^^^^^^^^^^^^^^^^
+
+warning: `miri` (bin "miri") generated 3 warnings (run `cargo clippy --fix --bin "miri"` to apply 1 suggestion)
+warning: `miri` (bin "miri" test) generated 3 warnings (3 duplicates)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.05s
+$ cargo +miri clippy --manifest-path /Users/dnomkr/src/mir2rpil/cargo-miri/Cargo.toml --all-targets
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.01s
+$ cargo +miri clippy --manifest-path /Users/dnomkr/src/mir2rpil/miri-script/Cargo.toml --all-targets
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.01s
+warning: unused imports: `CrateType` and `OptLevel`
+  --> src/bin/miri.rs:48:29
+   |
+48 | use rustc_session::config::{CrateType, ErrorOutputType, OptLevel};
+   |                             ^^^^^^^^^                   ^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: field `miri_config` is never read
+  --> src/bin/miri.rs:55:5
+   |
+54 | struct MiriCompilerCalls {
+   |        ----------------- field in this struct
+55 |     miri_config: miri::MiriConfig,
+   |     ^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: function `init_late_loggers` is never used
+   --> src/bin/miri.rs:464:4
+    |
+464 | fn init_late_loggers(early_dcx: &EarlyDiagCtxt, tcx: TyCtxt<'_>) {
+    |    ^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `CrateType` and `OptLevel`
+  --> src/bin/miri.rs:48:29
+   |
+48 | use rustc_session::config::{CrateType, ErrorOutputType, OptLevel};
+   |                             ^^^^^^^^^                   ^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` on by default
+
+warning: field `miri_config` is never read
+  --> src/bin/miri.rs:55:5
+   |
+54 | struct MiriCompilerCalls {
+   |        ----------------- field in this struct
+55 |     miri_config: miri::MiriConfig,
+   |     ^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: function `init_late_loggers` is never used
+   --> src/bin/miri.rs:464:4
+    |
+464 | fn init_late_loggers(early_dcx: &EarlyDiagCtxt, tcx: TyCtxt<'_>) {
+    |    ^^^^^^^^^^^^^^^^^
+
+warning: field `p2` is never read
+ --> playground/simple.rs:5:5
+  |
+3 | struct TwoMembers {
+  |        ---------- field in this struct
+4 |     p1: isize,
+5 |     p2: isize,
+  |     ^^
+  |
+  = note: `#[warn(dead_code)]` on by default
+
+Public functions: [DefId(0:6 ~ simple[3ce3]::do_something)]
+
+[MIR] Body for function: do_something
+Basic Block bb0:
+[Rvalue] Aggregate(Adt(DefId(0:3 ~ simple[3ce3]::TwoMembers), 0, [], None, None), [const 42_isize, const 43_isize])
+Statement: Assign((_1, TwoMembers { p1: const 42_isize, p2: const 43_isize }))
+[RPIL-EMIT] BIND place(_2,2), place(_1,1)
+[Rvalue] Aggregate(Adt(DefId(0:3 ~ simple[3ce3]::TwoMembers), 0, [], None, None), [const 44_isize, (_1.1: isize)])
+Statement: Assign((_2, TwoMembers { p1: const 44_isize, p2: (_1.1: isize) }))
+[RPIL-EMIT] MOVE _2
+[RPIL-EMIT] BIND _4, _2
+[Rvalue] Use(move _2)
+Statement: Assign((_4, move _2))
+[RPIL-EMIT] MOVE _4
+[RPIL-EMIT] BIND place(_3,1), _4
+[Rvalue] Aggregate(Adt(DefId(2:36549 ~ core[b5cd]::option::Option), 1, [TwoMembers], None, None), [move _4])
+Statement: Assign((_3, std::option::Option::<TwoMembers>::Some(move _4)))
+[RPIL-EMIT] MOVE _3
+[RPIL-EMIT] BIND _6, _3
+[Rvalue] Use(move _3)
+Statement: Assign((_6, move _3))
+[RPIL-EMIT] MOVE _6
+[RPIL-EMIT] BIND place(_5,1), _6
+[Rvalue] Aggregate(Adt(DefId(2:36549 ~ core[b5cd]::option::Option), 1, [std::option::Option<TwoMembers>], None, None), [move _6])
+Statement: Assign((_5, std::option::Option::<std::option::Option<TwoMembers>>::Some(move _6)))
+[RPIL-EMIT] MOVE _5
+[RPIL-EMIT] BIND _9, _5
+[Rvalue] Use(move _5)
+Statement: Assign((_9, move _5))
+[FunCall] `std::option::Option::<T>::unwrap`
+Statement: TermAssign((_8, Some(Body { basic_blocks: BasicBlocks { basic_blocks: [BasicBlockData { statements: [Retag([fn entry] _1), PlaceMention(_1), _2 = discriminant(_1)], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:961:9: 961:19 (#0), scope: scope[0] }, kind: switchInt(move _2) -> [0: bb2, 1: bb3, otherwise: bb1] }), is_cleanup: false }, BasicBlockData { statements: [], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:961:15: 961:19 (#0), scope: scope[0] }, kind: unreachable }), is_cleanup: false }, BasicBlockData { statements: [StorageLive(_4)], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:963:21: 963:36 (#0), scope: scope[0] }, kind: _4 = std::option::unwrap_failed() -> bb4 }), is_cleanup: false }, BasicBlockData { statements: [StorageLive(_3), _3 = move ((_1 as Some).0: T), Retag(_3), _0 = move _3, Retag(_0), StorageDead(_3)], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:965:6: 965:6 (#0), scope: scope[0] }, kind: return }), is_cleanup: false }, BasicBlockData { statements: [], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:5: 965:6 (#0), scope: scope[0] }, kind: resume }), is_cleanup: true }], cache: Cache { predecessors: OnceLock(<uninit>), switch_sources: OnceLock(<uninit>), is_cyclic: OnceLock(<uninit>), reverse_postorder: OnceLock(<uninit>), dominators: OnceLock(<uninit>) } }, phase: Runtime(Optimized), pass_count: 1, source: MirSource { instance: Item(DefId(2:9362 ~ core[b5cd]::option::{impl#0}::unwrap)), promoted: None }, source_scopes: [SourceScopeData { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:5: 965:6 (#0), parent_scope: None, inlined: None, inlined_parent_scope: None, local_data: Clear }, SourceScopeData { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:962:13: 962:29 (#0), parent_scope: Some(scope[0]), inlined: None, inlined_parent_scope: None, local_data: Clear }], coroutine: None, local_decls: [LocalDecl { mutability: Mut, local_info: Clear, ty: T/#0, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:34: 960:35 (#0), scope: scope[0] } }, LocalDecl { mutability: Not, local_info: Clear, ty: std::option::Option<T/#0>, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:25: 960:29 (#0), scope: scope[0] } }, LocalDecl { mutability: Mut, local_info: Clear, ty: isize, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:962:13: 962:22 (#0), scope: scope[0] } }, LocalDecl { mutability: Not, local_info: Clear, ty: T/#0, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:962:18: 962:21 (#0), scope: scope[0] } }, LocalDecl { mutability: Mut, local_info: Clear, ty: !, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:963:21: 963:36 (#0), scope: scope[0] } }], user_type_annotations: [], arg_count: 1, spread_arg: None, var_debug_info: [self => _1, val => _3], span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:5: 965:6 (#0), required_consts: [], mentioned_items: [Spanned { node: Fn(FnDef(DefId(2:9431 ~ core[b5cd]::option::unwrap_failed), [])), span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:963:21: 963:36 (#0) }], is_polymorphic: true, injection_phase: None, tainted_by_errors: None, coverage_info_hi: None, function_coverage_info: None })[move _9]))
+Next: Some(bb1)
+
+Basic Block bb1:
+[FunCall] `std::option::Option::<T>::unwrap`
+Statement: TermAssign((_7, Some(Body { basic_blocks: BasicBlocks { basic_blocks: [BasicBlockData { statements: [Retag([fn entry] _1), PlaceMention(_1), _2 = discriminant(_1)], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:961:9: 961:19 (#0), scope: scope[0] }, kind: switchInt(move _2) -> [0: bb2, 1: bb3, otherwise: bb1] }), is_cleanup: false }, BasicBlockData { statements: [], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:961:15: 961:19 (#0), scope: scope[0] }, kind: unreachable }), is_cleanup: false }, BasicBlockData { statements: [StorageLive(_4)], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:963:21: 963:36 (#0), scope: scope[0] }, kind: _4 = std::option::unwrap_failed() -> bb4 }), is_cleanup: false }, BasicBlockData { statements: [StorageLive(_3), _3 = move ((_1 as Some).0: T), Retag(_3), _0 = move _3, Retag(_0), StorageDead(_3)], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:965:6: 965:6 (#0), scope: scope[0] }, kind: return }), is_cleanup: false }, BasicBlockData { statements: [], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:5: 965:6 (#0), scope: scope[0] }, kind: resume }), is_cleanup: true }], cache: Cache { predecessors: OnceLock(<uninit>), switch_sources: OnceLock(<uninit>), is_cyclic: OnceLock(<uninit>), reverse_postorder: OnceLock(<uninit>), dominators: OnceLock(<uninit>) } }, phase: Runtime(Optimized), pass_count: 1, source: MirSource { instance: Item(DefId(2:9362 ~ core[b5cd]::option::{impl#0}::unwrap)), promoted: None }, source_scopes: [SourceScopeData { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:5: 965:6 (#0), parent_scope: None, inlined: None, inlined_parent_scope: None, local_data: Clear }, SourceScopeData { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:962:13: 962:29 (#0), parent_scope: Some(scope[0]), inlined: None, inlined_parent_scope: None, local_data: Clear }], coroutine: None, local_decls: [LocalDecl { mutability: Mut, local_info: Clear, ty: T/#0, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:34: 960:35 (#0), scope: scope[0] } }, LocalDecl { mutability: Not, local_info: Clear, ty: std::option::Option<T/#0>, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:25: 960:29 (#0), scope: scope[0] } }, LocalDecl { mutability: Mut, local_info: Clear, ty: isize, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:962:13: 962:22 (#0), scope: scope[0] } }, LocalDecl { mutability: Not, local_info: Clear, ty: T/#0, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:962:18: 962:21 (#0), scope: scope[0] } }, LocalDecl { mutability: Mut, local_info: Clear, ty: !, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:963:21: 963:36 (#0), scope: scope[0] } }], user_type_annotations: [], arg_count: 1, spread_arg: None, var_debug_info: [self => _1, val => _3], span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:5: 965:6 (#0), required_consts: [], mentioned_items: [Spanned { node: Fn(FnDef(DefId(2:9431 ~ core[b5cd]::option::unwrap_failed), [])), span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:963:21: 963:36 (#0) }], is_polymorphic: true, injection_phase: None, tainted_by_errors: None, coverage_info_hi: None, function_coverage_info: None })[move _8]))
+Next: Some(bb2)
+
+Basic Block bb2:
+[RPIL-EMIT] BIND _0, place(_7,0)
+[Rvalue] Use((_7.0: isize))
+Statement: Assign((_0, (_7.0: isize)))
+Next: return
+
+
+warning: 1 warning emitted
+

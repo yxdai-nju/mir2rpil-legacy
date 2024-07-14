@@ -19,12 +19,15 @@ extern crate rustc_log;
 extern crate rustc_metadata;
 extern crate rustc_middle;
 extern crate rustc_session;
+extern crate rustc_target;
 
 use std::env::{self, VarError};
+use std::mem::discriminant;
 use std::num::NonZero;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use rustc_target::abi::{FieldIdx, VariantIdx};
 use tracing::debug;
 
 use rustc_data_structures::sync::Lrc;
@@ -36,7 +39,9 @@ use rustc_middle::{
         codegen_fn_attrs::CodegenFnAttrFlags,
         exported_symbols::{ExportedSymbol, SymbolExportInfo, SymbolExportKind, SymbolExportLevel},
     },
+    mir,
     query::LocalCrate,
+    ty,
     ty::TyCtxt,
     util::Providers,
 };
@@ -48,6 +53,42 @@ use miri::{BacktraceStyle, BorrowTrackerMethod, ProvenanceMode, RetagFields};
 
 struct MiriCompilerCalls {
     miri_config: miri::MiriConfig,
+}
+
+fn mir_body_of_func_operand<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    func: &mir::Operand<'tcx>,
+) -> Option<&'tcx mir::Body<'tcx>> {
+    match func {
+        mir::Operand::Constant(operand) =>
+            match operand.const_ {
+                mir::Const::Val(_, fn_def) =>
+                    match fn_def.kind() {
+                        ty::FnDef(def_id, _) =>
+                            if tcx.is_mir_available(def_id) {
+                                println!("[FunCall] `{}`", tcx.def_path_str(def_id));
+                                let body = tcx.optimized_mir(def_id);
+                                Some(body)
+                            } else {
+                                None
+                            },
+                        _ => unimplemented!(),
+                    },
+                mir::Const::Unevaluated(_, _) | mir::Const::Ty(_, _) => unimplemented!(),
+            },
+        mir::Operand::Copy(_) | mir::Operand::Move(_) => unimplemented!(),
+    }
+}
+
+fn rpil_format_place<'tcx>(place: &'tcx mir::Place<'tcx>) -> String {
+    if place.projection.len() == 0 {
+        return format!("{:?}", place);
+    }
+    if let mir::ProjectionElem::Field(ridx, _) = &place.projection[0] {
+        format!("place({:?},{:?})", place.local, ridx)
+    } else {
+        format!("{:?}", place)
+    }
 }
 
 impl rustc_driver::Callbacks for MiriCompilerCalls {
@@ -72,52 +113,217 @@ impl rustc_driver::Callbacks for MiriCompilerCalls {
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> Compilation {
         queries.global_ctxt().unwrap().enter(|tcx| {
-            if tcx.sess.dcx().has_errors_or_delayed_bugs().is_some() {
-                tcx.dcx().fatal("miri cannot be run on programs that fail compilation");
+            let mut pub_fns = vec![];
+            let items = tcx.hir_crate_items(());
+            let free_items_owner_id = items.free_items().map(|id| id.owner_id);
+            let impl_items_owner_id = items.impl_items().map(|id| id.owner_id);
+            let funcs_owner_id = free_items_owner_id.chain(impl_items_owner_id);
+            for owner_id in funcs_owner_id {
+                if let hir::def::DefKind::Fn | hir::def::DefKind::AssocFn = tcx.def_kind(owner_id) {
+                    if tcx.visibility(owner_id).is_public() {
+                        pub_fns.push(owner_id);
+                    }
+                }
             }
-
-            let early_dcx = EarlyDiagCtxt::new(tcx.sess.opts.error_format);
-            init_late_loggers(&early_dcx, tcx);
-            if !tcx.crate_types().contains(&CrateType::Executable) {
-                tcx.dcx().fatal("miri only makes sense on bin crates");
+            println!("Public functions: {:?}\n", pub_fns);
+            for pub_fn in pub_fns {
+                let fn_name = tcx.def_path_str(pub_fn.to_def_id());
+                println!("[MIR] Body for function: {}", fn_name);
+                let body = tcx.optimized_mir(pub_fn);
+                for (bb, block_data) in body.basic_blocks.iter_enumerated() {
+                    println!("Basic Block {:?}:", bb);
+                    // BB statements
+                    for statement in &block_data.statements {
+                        match statement.kind {
+                            mir::StatementKind::Assign(ref p) => {
+                                let (ref place, ref rvalue) = **p;
+                                match rvalue {
+                                    mir::Rvalue::Use(operand) => {
+                                        match operand {
+                                            mir::Operand::Copy(rplace) => {
+                                                let rplace_formatted = rpil_format_place(rplace);
+                                                println!("[RPIL-EMIT] BIND {:?}, {}", place, rplace_formatted);
+                                            }
+                                            mir::Operand::Move(rplace) => {
+                                                let rplace_formatted = rpil_format_place(rplace);
+                                                println!("[RPIL-EMIT] MOVE {}", rplace_formatted);
+                                                println!("[RPIL-EMIT] BIND {:?}, {}", place, rplace_formatted);
+                                            }
+                                            mir::Operand::Constant(_) => {}
+                                        }
+                                        println!("[Rvalue] Use({:?})", operand);
+                                    }
+                                    mir::Rvalue::Aggregate(agg_kind, values) => {
+                                        match &**agg_kind {
+                                            mir::AggregateKind::Adt(_, variant_idx, _, _, _) =>
+                                                if *variant_idx == VariantIdx::from_usize(0) {
+                                                    for (lidx, value) in values.iter().enumerate() {
+                                                        match value {
+                                                            mir::Operand::Copy(rplace) => {
+                                                                let rplace_formatted = rpil_format_place(rplace);
+                                                                println!(
+                                                                    "[RPIL-EMIT] BIND place({:?},{:?}), {}",
+                                                                    place, lidx + 1, rplace_formatted
+                                                                );
+                                                            }
+                                                            mir::Operand::Move(rplace) => {
+                                                                let rplace_formatted = rpil_format_place(rplace);
+                                                                println!("[RPIL-EMIT] MOVE {}", rplace_formatted);
+                                                                println!(
+                                                                    "[RPIL-EMIT] BIND place({:?},{:?}), {}",
+                                                                    place, lidx + 1, rplace_formatted
+                                                                );
+                                                            }
+                                                            mir::Operand::Constant(_) => {}
+                                                        }
+                                                    }
+                                                } else {
+                                                    let value = values.get(FieldIdx::from_usize(0)).unwrap();
+                                                    match value {
+                                                        mir::Operand::Copy(rplace) => {
+                                                            let rplace_formatted = rpil_format_place(rplace);
+                                                            println!(
+                                                                "[RPIL-EMIT] BIND place({:?},{:?}), {}",
+                                                                place, variant_idx, rplace_formatted
+                                                            );
+                                                        }
+                                                        mir::Operand::Move(rplace) => {
+                                                            let rplace_formatted = rpil_format_place(rplace);
+                                                            println!("[RPIL-EMIT] MOVE {}", rplace_formatted);
+                                                            println!(
+                                                                "[RPIL-EMIT] BIND place({:?},{:?}), {}",
+                                                                place, variant_idx, rplace_formatted
+                                                            );
+                                                        }
+                                                        mir::Operand::Constant(_) => {}
+                                                    }
+                                                },
+                                            _ => unimplemented!(),
+                                        };
+                                        println!(
+                                            "[Rvalue] Aggregate({:?}, {:?})",
+                                            agg_kind, values
+                                        );
+                                    }
+                                    _ => {
+                                        let x = discriminant(rvalue);
+                                        println!("[Rvalue-{:?}] {:?}", x, rvalue);
+                                    }
+                                }
+                                println!("Statement: {:?}", statement.kind);
+                            }
+                            mir::StatementKind::StorageDead(_)
+                            | mir::StatementKind::StorageLive(_)
+                            | mir::StatementKind::Retag(_, _) => {}
+                            _ => {
+                                println!("Unknown Statement: {:?}", statement.kind);
+                            }
+                        }
+                    }
+                    // BB terminator
+                    if let Some(terminator) = &block_data.terminator {
+                        match terminator.kind {
+                            mir::TerminatorKind::Call {
+                                ref func,
+                                ref args,
+                                destination,
+                                target,
+                                ..
+                            } => {
+                                let func = mir_body_of_func_operand(tcx, func);
+                                let args: Vec<_> = args.iter().map(|s| s.node.clone()).collect();
+                                println!(
+                                    "Statement: TermAssign(({:?}, {:?}{:?}))",
+                                    destination, func, args
+                                );
+                                println!("Next: {:?}", target);
+                            }
+                            mir::TerminatorKind::Drop { place, target, .. } => {
+                                println!("Statement: Drop({:?})", place);
+                                println!("Next: {:?}", target);
+                            }
+                            mir::TerminatorKind::Assert { target, .. } =>
+                                println!("Next: {:?}", target),
+                            mir::TerminatorKind::Return => {
+                                println!("Next: return");
+                            }
+                            mir::TerminatorKind::UnwindResume => {
+                                println!("Next: !");
+                            }
+                            _ => {
+                                unimplemented!();
+                            }
+                        };
+                    }
+                    println!();
+                }
+                println!();
             }
-
-            let (entry_def_id, entry_type) = if let Some(entry_def) = tcx.entry_fn(()) {
-                entry_def
-            } else {
-                tcx.dcx().fatal("miri can only run programs that have a main function");
-            };
-            let mut config = self.miri_config.clone();
-
-            // Add filename to `miri` arguments.
-            config.args.insert(0, tcx.sess.io.input.filestem().to_string());
-
-            // Adjust working directory for interpretation.
-            if let Some(cwd) = env::var_os("MIRI_CWD") {
-                env::set_current_dir(cwd).unwrap();
-            }
-
-            if tcx.sess.opts.optimize != OptLevel::No {
-                tcx.dcx().warn("Miri does not support optimizations: the opt-level is ignored. The only effect \
-                    of selecting a Cargo profile that enables optimizations (such as --release) is to apply \
-                    its remaining settings, such as whether debug assertions and overflow checks are enabled.");
-            }
-            if tcx.sess.mir_opt_level() > 0 {
-                tcx.dcx().warn("You have explicitly enabled MIR optimizations, overriding Miri's default \
-                    which is to completely disable them. Any optimizations may hide UB that Miri would \
-                    otherwise detect, and it is not necessarily possible to predict what kind of UB will \
-                    be missed. If you are enabling optimizations to make Miri run faster, we advise using \
-                    cfg(miri) to shrink your workload instead. The performance benefit of enabling MIR \
-                    optimizations is usually marginal at best.");
-            }
-
-            if let Some(return_code) = miri::eval_entry(tcx, entry_def_id, entry_type, config) {
-                std::process::exit(
-                    i32::try_from(return_code).expect("Return value was too large!"),
-                );
-            }
-            tcx.dcx().abort_if_errors();
         });
+
+        // queries.global_ctxt().unwrap().enter(|tcx| {
+        //     if tcx.sess.dcx().has_errors_or_delayed_bugs().is_some() {
+        //         tcx.dcx().fatal("miri cannot be run on programs that fail compilation");
+        //     }
+
+        //     let early_dcx = EarlyDiagCtxt::new(tcx.sess.opts.error_format);
+        //     init_late_loggers(&early_dcx, tcx);
+        //     // if !tcx.crate_types().contains(&CrateType::Executable) {
+        //     //     tcx.dcx().fatal("miri only makes sense on bin crates");
+        //     // }
+
+        //     // let (entry_def_id, entry_type) = if let Some(entry_def) = tcx.entry_fn(()) {
+        //     //     entry_def
+        //     // } else {
+        //     //     tcx.dcx().fatal("miri can only run programs that have a main function");
+        //     // };
+        //     let mut funcs_owner_id = tcx.hir_crate_items(()).free_items().map(|x| x.owner_id);
+        //     let mut pubfns = vec![];
+        //     for owner_id in funcs_owner_id {
+        //                 if let hir::def::DefKind::Fn | hir::def::DefKind::AssocFn = tcx.def_kind(owner_id) {
+        //                     if tcx.visibility(owner_id).is_public() {
+        //                         pubfns.push(owner_id);
+        //                     }
+        //                 }
+        //             }
+        //     let pubfn_def_id = pubfns.first().unwrap().to_def_id();
+        //     let body = tcx.optimized_mir(pubfn_def_id);
+        //     println!("[MIR] {:#?}", body);
+        //     let mut config = self.miri_config.clone();
+
+        //     // Add filename to `miri` arguments.
+        //     config.args.insert(0, tcx.sess.io.input.filestem().to_string());
+
+        //     // Adjust working directory for interpretation.
+        //     if let Some(cwd) = env::var_os("MIRI_CWD") {
+        //         env::set_current_dir(cwd).unwrap();
+        //     }
+
+        //     if tcx.sess.opts.optimize != OptLevel::No {
+        //         tcx.dcx().warn("Miri does not support optimizations: the opt-level is ignored. The only effect \
+        //             of selecting a Cargo profile that enables optimizations (such as --release) is to apply \
+        //             its remaining settings, such as whether debug assertions and overflow checks are enabled.");
+        //     }
+        //     if tcx.sess.mir_opt_level() > 0 {
+        //         tcx.dcx().warn("You have explicitly enabled MIR optimizations, overriding Miri's default \
+        //             which is to completely disable them. Any optimizations may hide UB that Miri would \
+        //             otherwise detect, and it is not necessarily possible to predict what kind of UB will \
+        //             be missed. If you are enabling optimizations to make Miri run faster, we advise using \
+        //             cfg(miri) to shrink your workload instead. The performance benefit of enabling MIR \
+        //             optimizations is usually marginal at best.");
+        //     }
+
+        //     // if let Some(return_code) = miri::eval_entry(tcx, entry_def_id, entry_type, config) {
+        //     //     std::process::exit(
+        //     //         i32::try_from(return_code).expect("Return value was too large!"),
+        //     //     );
+        //     // }
+        //     println!("[RPIL] Evaluating `{:?}`", pubfn_def_id);
+        //     let rpil = miri::eval_pubfn(tcx, pubfn_def_id, config);
+        //     println!("[RPIL] Result: {:?}", rpil);
+
+        //     tcx.dcx().abort_if_errors();
+        // });
 
         Compilation::Stop
     }
