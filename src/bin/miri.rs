@@ -113,17 +113,20 @@ fn def_id_of_func_operand<'tcx>(func: &'tcx mir::Operand<'tcx>) -> hir::def_id::
     }
 }
 
-fn place_project<'tcx>(place: &'tcx mir::Place<'tcx>, idx: usize) -> RpilOp {
+fn project_rpil_place<'tcx>(place: &'tcx mir::Place<'tcx>, idx: usize) -> RpilOp {
     if idx == place.projection.len() {
         return RpilOp::Var(place.local.as_usize());
     }
     let rplace = &place.projection[idx];
     match rplace {
         mir::ProjectionElem::Field(ridx, _) =>
-            RpilOp::Place(Box::new(place_project(place, idx + 1)), format!("p{}", ridx.as_usize())),
-        mir::ProjectionElem::Deref => RpilOp::Deref(Box::new(place_project(place, idx + 1))),
+            RpilOp::Place(
+                Box::new(project_rpil_place(place, idx + 1)),
+                format!("p{}", ridx.as_usize()),
+            ),
+        mir::ProjectionElem::Deref => RpilOp::Deref(Box::new(project_rpil_place(place, idx + 1))),
         mir::ProjectionElem::Downcast(_, variant_idx) => {
-            let next_projection = place_project(place, idx + 1);
+            let next_projection = project_rpil_place(place, idx + 1);
             match next_projection {
                 RpilOp::Place(op, place_string) =>
                     RpilOp::Place(op, format!("v{}{}", variant_idx.as_usize(), place_string)),
@@ -139,233 +142,258 @@ fn place_project<'tcx>(place: &'tcx mir::Place<'tcx>, idx: usize) -> RpilOp {
 }
 
 fn rpil_place<'tcx>(place: &'tcx mir::Place<'tcx>) -> RpilOp {
-    let projection = place_project(place, 0);
+    let projection = project_rpil_place(place, 0);
     if place.projection.len() > 0 {
-        println!("[ProjectionElems] {:#?}", place.projection);
-        println!("[Projection] {:?}", projection);
+        println!("[Projection] {:?}, {:?}", place.local, place.projection);
+        println!("[Projection Result] {:?}", projection);
     }
     projection
 }
 
+struct TranslationCtxt {
+    rpil_insts: Vec<RpilInst>,
+}
+
+impl TranslationCtxt {
+    fn new() -> Self {
+        Self { rpil_insts: vec![] }
+    }
+
+    fn push_rpil_inst(&mut self, inst: RpilInst) {
+        println!("[RPIL] {:?}", inst);
+        self.rpil_insts.push(inst);
+    }
+}
+
 #[allow(clippy::needless_lifetimes)]
 fn rpil_of_func<'tcx>(tcx: TyCtxt<'tcx>, func_id: hir::def_id::DefId) -> Vec<RpilInst> {
-    let mut rpil_insts = vec![];
-    let mut emit_rpil = |inst: RpilInst| {
-        rpil_insts.push(inst);
-    };
+    let mut trcx = TranslationCtxt::new();
+
     let fn_name = tcx.def_path_str(func_id);
     println!("[MIR] Body for function: {}", fn_name);
+
     if !tcx.is_mir_available(func_id) {
         println!("MIR not available for `{:?}`", func_id);
         return vec![];
     }
+
     let body = tcx.optimized_mir(func_id);
     for (bb, block_data) in body.basic_blocks.iter_enumerated() {
         println!("Basic Block {:?}:", bb);
-        // BB statements
-        for statement in &block_data.statements {
-            let statement = &statement.kind;
-            match statement {
-                mir::StatementKind::Assign(p) => {
-                    println!("Statement: {:?}", statement);
-                    let (ref place, ref rvalue) = **p;
-                    match rvalue {
-                        mir::Rvalue::Use(operand) | mir::Rvalue::Cast(_, operand, _) => {
-                            if let mir::Rvalue::Use(_) = rvalue {
-                                println!("[Rvalue] Use({:?})", operand);
-                            } else {
-                                println!("[Rvalue] Cast({:?})", operand);
-                            }
-                            match operand {
-                                mir::Operand::Copy(rplace) => {
-                                    emit_rpil(RpilInst::Bind(
-                                        RpilOp::Var(place.local.as_usize()),
-                                        rpil_place(rplace),
-                                    ));
-                                }
-                                mir::Operand::Move(rplace) => {
-                                    emit_rpil(RpilInst::Move(rpil_place(rplace)));
-                                    emit_rpil(RpilInst::Bind(
-                                        RpilOp::Var(place.local.as_usize()),
-                                        rpil_place(rplace),
-                                    ));
-                                }
-                                mir::Operand::Constant(_) => {}
-                            }
-                        }
-                        mir::Rvalue::Aggregate(agg_kind, values) => {
-                            println!("[Rvalue] Aggregate({:?}, {:?})", agg_kind, values);
-                            let agg_kind = &**agg_kind;
-                            match agg_kind {
-                                mir::AggregateKind::Array(..) => {
-                                    println!("[AggregateKind] Array({:?})", values);
-                                    for (lidx, value) in values.iter().enumerate() {
-                                        match value {
-                                            mir::Operand::Copy(rplace) => {
-                                                emit_rpil(RpilInst::Bind(
-                                                    RpilOp::Place(
-                                                        Box::new(RpilOp::Var(
-                                                            place.local.as_usize(),
-                                                        )),
-                                                        format!("p{}", lidx),
-                                                    ),
-                                                    rpil_place(rplace),
-                                                ));
-                                            }
-                                            mir::Operand::Move(rplace) => {
-                                                emit_rpil(RpilInst::Move(rpil_place(rplace)));
-                                                emit_rpil(RpilInst::Bind(
-                                                    RpilOp::Place(
-                                                        Box::new(RpilOp::Var(
-                                                            place.local.as_usize(),
-                                                        )),
-                                                        format!("p{}", lidx),
-                                                    ),
-                                                    rpil_place(rplace),
-                                                ));
-                                            }
-                                            mir::Operand::Constant(_) => {}
-                                        }
-                                    }
-                                }
-                                mir::AggregateKind::Adt(_, variant_idx, _, _, _) =>
-                                    if *variant_idx == VariantIdx::from_usize(0) {
-                                        for (lidx, value) in values.iter().enumerate() {
-                                            match value {
-                                                mir::Operand::Copy(rplace) => {
-                                                    emit_rpil(RpilInst::Bind(
-                                                        RpilOp::Place(
-                                                            Box::new(RpilOp::Var(
-                                                                place.local.as_usize(),
-                                                            )),
-                                                            format!("p{}", lidx),
-                                                        ),
-                                                        rpil_place(rplace),
-                                                    ));
-                                                }
-                                                mir::Operand::Move(rplace) => {
-                                                    emit_rpil(RpilInst::Move(rpil_place(rplace)));
-                                                    emit_rpil(RpilInst::Bind(
-                                                        RpilOp::Place(
-                                                            Box::new(RpilOp::Var(
-                                                                place.local.as_usize(),
-                                                            )),
-                                                            format!("p{}", lidx),
-                                                        ),
-                                                        rpil_place(rplace),
-                                                    ));
-                                                }
-                                                mir::Operand::Constant(_) => {}
-                                            }
-                                        }
-                                    } else {
-                                        let value = values.get(FieldIdx::from_usize(0)).unwrap();
-                                        match value {
-                                            mir::Operand::Copy(rplace) => {
-                                                emit_rpil(RpilInst::Bind(
-                                                    RpilOp::Place(
-                                                        Box::new(RpilOp::Var(
-                                                            place.local.as_usize(),
-                                                        )),
-                                                        format!("p{}", variant_idx.as_usize()),
-                                                    ),
-                                                    rpil_place(rplace),
-                                                ));
-                                            }
-                                            mir::Operand::Move(rplace) => {
-                                                emit_rpil(RpilInst::Move(rpil_place(rplace)));
-                                                emit_rpil(RpilInst::Bind(
-                                                    RpilOp::Place(
-                                                        Box::new(RpilOp::Var(
-                                                            place.local.as_usize(),
-                                                        )),
-                                                        format!("p{}", variant_idx.as_usize()),
-                                                    ),
-                                                    rpil_place(rplace),
-                                                ));
-                                            }
-                                            mir::Operand::Constant(_) => {}
-                                        }
-                                    },
-                                _ => {
-                                    let x = discriminant(agg_kind);
-                                    println!("[AggregateKind-{:?}] Unknown `{:?}`", x, agg_kind);
-                                    unimplemented!();
-                                }
-                            };
-                        }
-                        mir::Rvalue::Ref(_, _, rplace) => {
-                            println!("[Rvalue] Ref({:?})", rplace);
-                            emit_rpil(RpilInst::Borrow(
-                                RpilOp::Var(place.local.as_usize()),
-                                rpil_place(rplace),
-                            ));
-                        }
-                        mir::Rvalue::Discriminant(..) => {}
-                        _ => {
-                            let x = discriminant(rvalue);
-                            println!("[Rvalue-{:?}] Unknown `{:?}`", x, rvalue);
-                            unimplemented!();
-                        }
-                    }
+        translate_basic_block(tcx, block_data, &mut trcx);
+    }
+
+    trcx.rpil_insts
+}
+
+fn translate_basic_block<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    block_data: &'tcx mir::BasicBlockData<'tcx>,
+    trcx: &mut TranslationCtxt,
+) {
+    for statement in &block_data.statements {
+        translate_statement(tcx, statement, trcx);
+    }
+    if let Some(terminator) = &block_data.terminator {
+        translate_terminator(tcx, terminator, trcx);
+    }
+    println!();
+}
+
+fn translate_statement<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    statement: &'tcx mir::Statement<'tcx>,
+    trcx: &mut TranslationCtxt,
+) {
+    let statement = &statement.kind;
+    match statement {
+        mir::StatementKind::Assign(p) => {
+            println!("Statement: {:?}", statement);
+            let (place, rvalue) = &**p;
+            translate_statement_of_assign(tcx, place, rvalue, trcx);
+        }
+        mir::StatementKind::StorageDead(..)
+        | mir::StatementKind::StorageLive(..)
+        | mir::StatementKind::Retag(..)
+        | mir::StatementKind::PlaceMention(..) => {}
+        _ => {
+            let x = discriminant(statement);
+            println!("Statement-{:?}: Unknown `{:?}`", x, statement);
+            unimplemented!();
+        }
+    }
+}
+
+fn translate_statement_of_assign<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    place: &'tcx mir::Place<'tcx>,
+    rvalue: &'tcx mir::Rvalue<'tcx>,
+    trcx: &mut TranslationCtxt,
+) {
+    match rvalue {
+        mir::Rvalue::Use(operand) | mir::Rvalue::Cast(_, operand, _) => {
+            if let mir::Rvalue::Use(_) = rvalue {
+                println!("[Rvalue] Use({:?})", operand);
+            } else {
+                println!("[Rvalue] Cast({:?})", operand);
+            }
+            match operand {
+                mir::Operand::Copy(rplace) => {
+                    trcx.push_rpil_inst(RpilInst::Bind(
+                        RpilOp::Var(place.local.as_usize()),
+                        rpil_place(rplace),
+                    ));
                 }
-                mir::StatementKind::StorageDead(..)
-                | mir::StatementKind::StorageLive(..)
-                | mir::StatementKind::Retag(..)
-                | mir::StatementKind::PlaceMention(..) => {}
-                _ => {
-                    let x = discriminant(statement);
-                    println!("Statement-{:?}: Unknown `{:?}`", x, statement);
-                    unimplemented!();
+                mir::Operand::Move(rplace) => {
+                    trcx.push_rpil_inst(RpilInst::Move(rpil_place(rplace)));
+                    trcx.push_rpil_inst(RpilInst::Bind(
+                        RpilOp::Var(place.local.as_usize()),
+                        rpil_place(rplace),
+                    ));
+                }
+                mir::Operand::Constant(_) => {}
+            }
+        }
+        mir::Rvalue::Aggregate(aggregate, values) => {
+            println!("[Rvalue] Aggregate({:?}, {:?})", aggregate, values);
+            translate_statement_of_assign_aggregate(tcx, place, rvalue, trcx);
+        }
+        mir::Rvalue::Ref(_, _, rplace) => {
+            println!("[Rvalue] Ref({:?})", rplace);
+            trcx.push_rpil_inst(RpilInst::Borrow(
+                RpilOp::Var(place.local.as_usize()),
+                rpil_place(rplace),
+            ));
+        }
+        mir::Rvalue::Discriminant(..) => {}
+        _ => {
+            let x = discriminant(rvalue);
+            println!("[Rvalue-{:?}] Unknown `{:?}`", x, rvalue);
+            unimplemented!();
+        }
+    }
+}
+
+fn translate_statement_of_assign_aggregate<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    place: &'tcx mir::Place<'tcx>,
+    rvalue: &'tcx mir::Rvalue<'tcx>,
+    trcx: &mut TranslationCtxt,
+) {
+    let (aggregate, values) = match rvalue {
+        mir::Rvalue::Aggregate(aggregate, values) => (&**aggregate, values),
+        _ => unreachable!(),
+    };
+    match aggregate {
+        mir::AggregateKind::Array(..) => {
+            println!("[AggregateKind] Array({:?})", values);
+            for (lidx, value) in values.iter().enumerate() {
+                match value {
+                    mir::Operand::Copy(rplace) => {
+                        trcx.push_rpil_inst(RpilInst::Bind(
+                            RpilOp::Place(
+                                Box::new(RpilOp::Var(place.local.as_usize())),
+                                format!("p{}", lidx),
+                            ),
+                            rpil_place(rplace),
+                        ));
+                    }
+                    mir::Operand::Move(rplace) => {
+                        trcx.push_rpil_inst(RpilInst::Move(rpil_place(rplace)));
+                        trcx.push_rpil_inst(RpilInst::Bind(
+                            RpilOp::Place(
+                                Box::new(RpilOp::Var(place.local.as_usize())),
+                                format!("p{}", lidx),
+                            ),
+                            rpil_place(rplace),
+                        ));
+                    }
+                    mir::Operand::Constant(_) => {}
                 }
             }
         }
-        // BB terminator
-        if let Some(terminator) = &block_data.terminator {
-            let terminator = &terminator.kind;
-            match terminator {
-                mir::TerminatorKind::Call { ref func, ref args, destination, target, .. } => {
-                    println!("Terminator: Assign(({:?}, {:?}{:?}))", destination, func, args);
-                    let called_func_id = def_id_of_func_operand(func);
-                    let rpil_insts = rpil_of_func(tcx, called_func_id);
-                    println!(
-                        "[RPIL] FunCall RPIL:{}",
-                        if rpil_insts.is_empty() { " (empty)" } else { "" }
-                    );
-                    for inst in rpil_insts {
-                        println!("    {:?}", inst);
+        mir::AggregateKind::Adt(_, variant_idx, _, _, _) => {
+            println!("[AggregateKind] Adt(variant_idx={:?})", variant_idx);
+            for (lidx, value) in values.iter().enumerate() {
+                match value {
+                    mir::Operand::Copy(rplace) => {
+                        trcx.push_rpil_inst(RpilInst::Bind(
+                            RpilOp::Place(
+                                Box::new(RpilOp::Var(place.local.as_usize())),
+                                format!("v{}p{}", variant_idx.as_usize(), lidx),
+                            ),
+                            rpil_place(rplace),
+                        ));
                     }
-                    // let args: Vec<_> = args.iter().map(|s| s.node.clone()).collect();
-                    println!("Next: {:?}", target);
+                    mir::Operand::Move(rplace) => {
+                        trcx.push_rpil_inst(RpilInst::Move(rpil_place(rplace)));
+                        trcx.push_rpil_inst(RpilInst::Bind(
+                            RpilOp::Place(
+                                Box::new(RpilOp::Var(place.local.as_usize())),
+                                format!("v{}p{}", variant_idx.as_usize(), lidx),
+                            ),
+                            rpil_place(rplace),
+                        ));
+                    }
+                    mir::Operand::Constant(_) => {}
                 }
-                mir::TerminatorKind::Drop { place, target, .. } => {
-                    println!("Terminator: Drop({:?})", place);
-                    println!("Next: {:?}", target);
-                }
-                mir::TerminatorKind::Assert { cond, msg, target, .. } => {
-                    println!("Terminator: Assert({:?}, {:?})", cond, msg);
-                    println!("Next: {:?}", target);
-                }
-                mir::TerminatorKind::Return => {
-                    println!("Next: return");
-                }
-                mir::TerminatorKind::UnwindResume | mir::TerminatorKind::Unreachable => {
-                    println!("Next: !");
-                }
-                mir::TerminatorKind::SwitchInt { discr, ref targets, .. } => {
-                    println!("Terminator: SwitchInt({:?})", discr);
-                    println!("Next: {:?}", targets.all_targets());
-                }
-                _ => {
-                    let x = discriminant(terminator);
-                    println!("Terminator-{:?}: Unknown `{:?}`", x, terminator);
-                    unimplemented!();
-                }
-            };
+            }
         }
-        println!();
-    }
-    rpil_insts
+        _ => {
+            let x = discriminant(aggregate);
+            println!("[AggregateKind-{:?}] Unknown `{:?}`", x, aggregate);
+            unimplemented!();
+        }
+    };
+}
+
+fn translate_terminator<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    terminator: &'tcx mir::Terminator<'tcx>,
+    trcx: &mut TranslationCtxt,
+) {
+    let terminator = &terminator.kind;
+    match terminator {
+        mir::TerminatorKind::Call { ref func, ref args, destination, target, .. } => {
+            println!("Terminator: Assign(({:?}, {:?}{:?}))", destination, func, args);
+            let called_func_id = def_id_of_func_operand(func);
+            let rpil_insts = rpil_of_func(tcx, called_func_id);
+            println!("[RPIL] {:?}:", called_func_id);
+            if !rpil_insts.is_empty() {
+                for inst in rpil_insts {
+                    println!("    {:?}", inst);
+                }
+            } else {
+                println!("    (empty)");
+            }
+
+            // let args: Vec<_> = args.iter().map(|s| s.node.clone()).collect();
+            println!("Next: {:?}", target);
+        }
+        mir::TerminatorKind::Drop { place, target, .. } => {
+            println!("Terminator: Drop({:?})", place);
+            println!("Next: {:?}", target);
+        }
+        mir::TerminatorKind::Assert { cond, msg, target, .. } => {
+            println!("Terminator: Assert({:?}, {:?})", cond, msg);
+            println!("Next: {:?}", target);
+        }
+        mir::TerminatorKind::Return => {
+            println!("Next: return");
+        }
+        mir::TerminatorKind::UnwindResume | mir::TerminatorKind::Unreachable => {
+            println!("Next: !");
+        }
+        mir::TerminatorKind::SwitchInt { discr, ref targets, .. } => {
+            println!("Terminator: SwitchInt({:?})", discr);
+            println!("Next: {:?}", targets.all_targets());
+        }
+        _ => {
+            let x = discriminant(terminator);
+            println!("Terminator-{:?}: Unknown `{:?}`", x, terminator);
+            unimplemented!();
+        }
+    };
 }
 
 impl rustc_driver::Callbacks for MiriCompilerCalls {
