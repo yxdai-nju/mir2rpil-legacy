@@ -21,6 +21,7 @@ extern crate rustc_middle;
 extern crate rustc_session;
 extern crate rustc_target;
 
+use core::fmt;
 use std::env::{self, VarError};
 use std::mem::discriminant;
 use std::num::NonZero;
@@ -55,33 +56,49 @@ struct MiriCompilerCalls {
     miri_config: miri::MiriConfig,
 }
 
-fn mir_body_of_func_operand<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    func: &mir::Operand<'tcx>,
-) -> Option<&'tcx mir::Body<'tcx>> {
-    match func {
-        mir::Operand::Constant(operand) =>
-            match operand.const_ {
-                mir::Const::Val(_, fn_def) =>
-                    match fn_def.kind() {
-                        ty::FnDef(def_id, _) =>
-                            if tcx.is_mir_available(def_id) {
-                                println!("[FunCall] `{}`", tcx.def_path_str(def_id));
-                                let body = tcx.optimized_mir(def_id);
-                                Some(body)
-                            } else {
-                                None
-                            },
-                        _ => unimplemented!(),
-                    },
-                mir::Const::Unevaluated(_, _) | mir::Const::Ty(_, _) => unimplemented!(),
-            },
-        mir::Operand::Copy(_) | mir::Operand::Move(_) => unimplemented!(),
+enum RpilOp {
+    Var(usize),
+    Place(Box<RpilOp>, String),
+    ExternPlace(Box<RpilOp>),
+    Deref(Box<RpilOp>),
+}
+
+impl fmt::Debug for RpilOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use RpilOp::*;
+        match self {
+            Var(var) => write!(f, "${:?}", var),
+            Place(op, place) => write!(f, "{:?}.{}", op, place),
+            ExternPlace(op) => write!(f, "{:?}.extern", op),
+            Deref(op) => write!(f, "({:?})*", op),
+        }
     }
 }
 
-#[allow(clippy::needless_lifetimes)]
-fn def_id_of_func_operand<'tcx>(func: &mir::Operand<'tcx>) -> hir::def_id::DefId {
+enum RpilInst {
+    Bind(RpilOp, RpilOp),
+    Borrow(RpilOp, RpilOp),
+    BorrowMut(RpilOp, RpilOp),
+    Move(RpilOp),
+    DerefMove(RpilOp),
+    DerefPin(RpilOp),
+}
+
+impl fmt::Debug for RpilInst {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use RpilInst::*;
+        match self {
+            Bind(op1, op2) => write!(f, "BIND {:?}, {:?}", op1, op2),
+            Borrow(op1, op2) => write!(f, "BORROW {:?}, {:?}", op1, op2),
+            BorrowMut(op1, op2) => write!(f, "BORROW-MUT {:?}, {:?}", op1, op2),
+            Move(op) => write!(f, "MOVE {:?}", op),
+            DerefMove(op) => write!(f, "DEREF-MOVE {:?}", op),
+            DerefPin(op) => write!(f, "DEREF-PIN {:?}", op),
+        }
+    }
+}
+
+fn def_id_of_func_operand<'tcx>(func: &'tcx mir::Operand<'tcx>) -> hir::def_id::DefId {
     match func {
         mir::Operand::Constant(operand) =>
             match operand.const_ {
@@ -96,13 +113,23 @@ fn def_id_of_func_operand<'tcx>(func: &mir::Operand<'tcx>) -> hir::def_id::DefId
     }
 }
 
-fn place_project<'tcx>(place: &'tcx mir::Place<'tcx>, idx: usize) -> String {
-    assert!(idx < place.projection.len());
+fn place_project<'tcx>(place: &'tcx mir::Place<'tcx>, idx: usize) -> RpilOp {
+    if idx == place.projection.len() {
+        return RpilOp::Var(place.local.as_usize());
+    }
     let rplace = &place.projection[idx];
     match rplace {
-        mir::ProjectionElem::Field(ridx, _) => format!("place({:?},{:?})", place.local, ridx),
-        mir::ProjectionElem::Deref => format!("deref({:?})", place.local),
-        mir::ProjectionElem::Downcast(..) => place_project(place, idx + 1),
+        mir::ProjectionElem::Field(ridx, _) =>
+            RpilOp::Place(Box::new(place_project(place, idx + 1)), format!("p{}", ridx.as_usize())),
+        mir::ProjectionElem::Deref => RpilOp::Deref(Box::new(place_project(place, idx + 1))),
+        mir::ProjectionElem::Downcast(_, variant_idx) => {
+            let next_projection = place_project(place, idx + 1);
+            match next_projection {
+                RpilOp::Place(op, place_string) =>
+                    RpilOp::Place(op, format!("v{}{}", variant_idx.as_usize(), place_string)),
+                _ => unreachable!(),
+            }
+        }
         _ => {
             let x = discriminant(rplace);
             println!("[ProjectionElem-{:?}] Unknown `{:?}`", x, rplace);
@@ -111,21 +138,20 @@ fn place_project<'tcx>(place: &'tcx mir::Place<'tcx>, idx: usize) -> String {
     }
 }
 
-fn rpil_format_place<'tcx>(place: &'tcx mir::Place<'tcx>) -> String {
-    if place.projection.len() == 0 {
-        return format!("{:?}", place);
-    }
-    println!("[ProjectionElems] {:#?}", place.projection);
+fn rpil_place<'tcx>(place: &'tcx mir::Place<'tcx>) -> RpilOp {
     let projection = place_project(place, 0);
-    println!("[Projection] {}", projection);
+    if place.projection.len() > 0 {
+        println!("[ProjectionElems] {:#?}", place.projection);
+        println!("[Projection] {:?}", projection);
+    }
     projection
 }
 
 #[allow(clippy::needless_lifetimes)]
-fn rpil_of_func<'tcx>(tcx: TyCtxt<'tcx>, func_id: hir::def_id::DefId) -> Vec<String> {
-    let mut rpil = vec![];
-    let mut emit_rpil = |s: String| {
-        rpil.push(s);
+fn rpil_of_func<'tcx>(tcx: TyCtxt<'tcx>, func_id: hir::def_id::DefId) -> Vec<RpilInst> {
+    let mut rpil_insts = vec![];
+    let mut emit_rpil = |inst: RpilInst| {
+        rpil_insts.push(inst);
     };
     let fn_name = tcx.def_path_str(func_id);
     println!("[MIR] Body for function: {}", fn_name);
@@ -152,13 +178,17 @@ fn rpil_of_func<'tcx>(tcx: TyCtxt<'tcx>, func_id: hir::def_id::DefId) -> Vec<Str
                             }
                             match operand {
                                 mir::Operand::Copy(rplace) => {
-                                    let rplace_formatted = rpil_format_place(rplace);
-                                    emit_rpil(format!("BIND {:?}, {}", place, rplace_formatted));
+                                    emit_rpil(RpilInst::Bind(
+                                        RpilOp::Var(place.local.as_usize()),
+                                        rpil_place(rplace),
+                                    ));
                                 }
                                 mir::Operand::Move(rplace) => {
-                                    let rplace_formatted = rpil_format_place(rplace);
-                                    emit_rpil(format!("MOVE {}", rplace_formatted));
-                                    emit_rpil(format!("BIND {:?}, {}", place, rplace_formatted));
+                                    emit_rpil(RpilInst::Move(rpil_place(rplace)));
+                                    emit_rpil(RpilInst::Bind(
+                                        RpilOp::Var(place.local.as_usize()),
+                                        rpil_place(rplace),
+                                    ));
                                 }
                                 mir::Operand::Constant(_) => {}
                             }
@@ -172,22 +202,26 @@ fn rpil_of_func<'tcx>(tcx: TyCtxt<'tcx>, func_id: hir::def_id::DefId) -> Vec<Str
                                     for (lidx, value) in values.iter().enumerate() {
                                         match value {
                                             mir::Operand::Copy(rplace) => {
-                                                let rplace_formatted = rpil_format_place(rplace);
-                                                emit_rpil(format!(
-                                                    "BIND place({:?},{:?}), {}",
-                                                    place,
-                                                    lidx + 1,
-                                                    rplace_formatted
+                                                emit_rpil(RpilInst::Bind(
+                                                    RpilOp::Place(
+                                                        Box::new(RpilOp::Var(
+                                                            place.local.as_usize(),
+                                                        )),
+                                                        format!("p{}", lidx),
+                                                    ),
+                                                    rpil_place(rplace),
                                                 ));
                                             }
                                             mir::Operand::Move(rplace) => {
-                                                let rplace_formatted = rpil_format_place(rplace);
-                                                emit_rpil(format!("MOVE {}", rplace_formatted));
-                                                emit_rpil(format!(
-                                                    "BIND place({:?},{:?}), {}",
-                                                    place,
-                                                    lidx + 1,
-                                                    rplace_formatted
+                                                emit_rpil(RpilInst::Move(rpil_place(rplace)));
+                                                emit_rpil(RpilInst::Bind(
+                                                    RpilOp::Place(
+                                                        Box::new(RpilOp::Var(
+                                                            place.local.as_usize(),
+                                                        )),
+                                                        format!("p{}", lidx),
+                                                    ),
+                                                    rpil_place(rplace),
                                                 ));
                                             }
                                             mir::Operand::Constant(_) => {}
@@ -199,24 +233,26 @@ fn rpil_of_func<'tcx>(tcx: TyCtxt<'tcx>, func_id: hir::def_id::DefId) -> Vec<Str
                                         for (lidx, value) in values.iter().enumerate() {
                                             match value {
                                                 mir::Operand::Copy(rplace) => {
-                                                    let rplace_formatted =
-                                                        rpil_format_place(rplace);
-                                                    emit_rpil(format!(
-                                                        "BIND place({:?},{:?}), {}",
-                                                        place,
-                                                        lidx + 1,
-                                                        rplace_formatted
+                                                    emit_rpil(RpilInst::Bind(
+                                                        RpilOp::Place(
+                                                            Box::new(RpilOp::Var(
+                                                                place.local.as_usize(),
+                                                            )),
+                                                            format!("p{}", lidx),
+                                                        ),
+                                                        rpil_place(rplace),
                                                     ));
                                                 }
                                                 mir::Operand::Move(rplace) => {
-                                                    let rplace_formatted =
-                                                        rpil_format_place(rplace);
-                                                    emit_rpil(format!("MOVE {}", rplace_formatted));
-                                                    emit_rpil(format!(
-                                                        "BIND place({:?},{:?}), {}",
-                                                        place,
-                                                        lidx + 1,
-                                                        rplace_formatted
+                                                    emit_rpil(RpilInst::Move(rpil_place(rplace)));
+                                                    emit_rpil(RpilInst::Bind(
+                                                        RpilOp::Place(
+                                                            Box::new(RpilOp::Var(
+                                                                place.local.as_usize(),
+                                                            )),
+                                                            format!("p{}", lidx),
+                                                        ),
+                                                        rpil_place(rplace),
                                                     ));
                                                 }
                                                 mir::Operand::Constant(_) => {}
@@ -226,18 +262,26 @@ fn rpil_of_func<'tcx>(tcx: TyCtxt<'tcx>, func_id: hir::def_id::DefId) -> Vec<Str
                                         let value = values.get(FieldIdx::from_usize(0)).unwrap();
                                         match value {
                                             mir::Operand::Copy(rplace) => {
-                                                let rplace_formatted = rpil_format_place(rplace);
-                                                emit_rpil(format!(
-                                                    "BIND place({:?},{:?}), {}",
-                                                    place, variant_idx, rplace_formatted
+                                                emit_rpil(RpilInst::Bind(
+                                                    RpilOp::Place(
+                                                        Box::new(RpilOp::Var(
+                                                            place.local.as_usize(),
+                                                        )),
+                                                        format!("p{}", variant_idx.as_usize()),
+                                                    ),
+                                                    rpil_place(rplace),
                                                 ));
                                             }
                                             mir::Operand::Move(rplace) => {
-                                                let rplace_formatted = rpil_format_place(rplace);
-                                                emit_rpil(format!("MOVE {}", rplace_formatted));
-                                                emit_rpil(format!(
-                                                    "BIND place({:?},{:?}), {}",
-                                                    place, variant_idx, rplace_formatted
+                                                emit_rpil(RpilInst::Move(rpil_place(rplace)));
+                                                emit_rpil(RpilInst::Bind(
+                                                    RpilOp::Place(
+                                                        Box::new(RpilOp::Var(
+                                                            place.local.as_usize(),
+                                                        )),
+                                                        format!("p{}", variant_idx.as_usize()),
+                                                    ),
+                                                    rpil_place(rplace),
                                                 ));
                                             }
                                             mir::Operand::Constant(_) => {}
@@ -252,8 +296,10 @@ fn rpil_of_func<'tcx>(tcx: TyCtxt<'tcx>, func_id: hir::def_id::DefId) -> Vec<Str
                         }
                         mir::Rvalue::Ref(_, _, rplace) => {
                             println!("[Rvalue] Ref({:?})", rplace);
-                            let rplace_formatted = rpil_format_place(rplace);
-                            emit_rpil(format!("BORROW {:?}, {}", place, rplace_formatted));
+                            emit_rpil(RpilInst::Borrow(
+                                RpilOp::Var(place.local.as_usize()),
+                                rpil_place(rplace),
+                            ));
                         }
                         mir::Rvalue::Discriminant(..) => {}
                         _ => {
@@ -281,7 +327,14 @@ fn rpil_of_func<'tcx>(tcx: TyCtxt<'tcx>, func_id: hir::def_id::DefId) -> Vec<Str
                 mir::TerminatorKind::Call { ref func, ref args, destination, target, .. } => {
                     println!("Terminator: Assign(({:?}, {:?}{:?}))", destination, func, args);
                     let called_func_id = def_id_of_func_operand(func);
-                    println!("[RPIL] FunCall Result: {:#?}", rpil_of_func(tcx, called_func_id));
+                    let rpil_insts = rpil_of_func(tcx, called_func_id);
+                    println!(
+                        "[RPIL] FunCall RPIL:{}",
+                        if rpil_insts.is_empty() { " (empty)" } else { "" }
+                    );
+                    for inst in rpil_insts {
+                        println!("    {:?}", inst);
+                    }
                     // let args: Vec<_> = args.iter().map(|s| s.node.clone()).collect();
                     println!("Next: {:?}", target);
                 }
@@ -312,7 +365,7 @@ fn rpil_of_func<'tcx>(tcx: TyCtxt<'tcx>, func_id: hir::def_id::DefId) -> Vec<Str
         }
         println!();
     }
-    rpil
+    rpil_insts
 }
 
 impl rustc_driver::Callbacks for MiriCompilerCalls {
