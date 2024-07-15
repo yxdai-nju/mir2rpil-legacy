@@ -25,14 +25,14 @@ warning: function `mir_body_of_func_operand` is never used
    |    ^^^^^^^^^^^^^^^^^^^^^^^^
 
 warning: function `init_late_loggers` is never used
-   --> src/bin/miri.rs:537:4
+   --> src/bin/miri.rs:559:4
     |
-537 | fn init_late_loggers(early_dcx: &EarlyDiagCtxt, tcx: TyCtxt<'_>) {
+559 | fn init_late_loggers(early_dcx: &EarlyDiagCtxt, tcx: TyCtxt<'_>) {
     |    ^^^^^^^^^^^^^^^^^
 
 warning: `miri` (bin "miri") generated 4 warnings (run `cargo clippy --fix --bin "miri"` to apply 1 suggestion)
 warning: `miri` (bin "miri" test) generated 4 warnings (4 duplicates)
-    Finished `dev` profile [optimized + debuginfo] target(s) in 0.05s
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.04s
 $ cargo +miri clippy --manifest-path /Users/dnomkr/src/mir2rpil/cargo-miri/Cargo.toml --all-targets
     Finished `dev` profile [optimized + debuginfo] target(s) in 0.01s
 $ cargo +miri clippy --manifest-path /Users/dnomkr/src/mir2rpil/miri-script/Cargo.toml --all-targets
@@ -62,9 +62,9 @@ warning: function `mir_body_of_func_operand` is never used
    |    ^^^^^^^^^^^^^^^^^^^^^^^^
 
 warning: function `init_late_loggers` is never used
-   --> src/bin/miri.rs:537:4
+   --> src/bin/miri.rs:559:4
     |
-537 | fn init_late_loggers(early_dcx: &EarlyDiagCtxt, tcx: TyCtxt<'_>) {
+559 | fn init_late_loggers(early_dcx: &EarlyDiagCtxt, tcx: TyCtxt<'_>) {
     |    ^^^^^^^^^^^^^^^^^
 
 warning: unused imports: `CrateType` and `OptLevel`
@@ -92,9 +92,9 @@ warning: function `mir_body_of_func_operand` is never used
    |    ^^^^^^^^^^^^^^^^^^^^^^^^
 
 warning: function `init_late_loggers` is never used
-   --> src/bin/miri.rs:537:4
+   --> src/bin/miri.rs:559:4
     |
-537 | fn init_late_loggers(early_dcx: &EarlyDiagCtxt, tcx: TyCtxt<'_>) {
+559 | fn init_late_loggers(early_dcx: &EarlyDiagCtxt, tcx: TyCtxt<'_>) {
     |    ^^^^^^^^^^^^^^^^^
 
 warning: field `p2` is never read
@@ -112,65 +112,98 @@ Public functions: [DefId(0:6 ~ simple[3ce3]::do_something)]
 
 [MIR] Body for function: do_something
 Basic Block bb0:
-[Rvalue] Aggregate(Adt(DefId(0:3 ~ simple[3ce3]::TwoMembers), 0, [], None, None), [const 42_isize, const 43_isize])
 Statement: Assign((_1, TwoMembers { p1: const 42_isize, p2: const 43_isize }))
-[Rvalue] Aggregate(Adt(DefId(0:3 ~ simple[3ce3]::TwoMembers), 0, [], None, None), [const 44_isize, (_1.1: isize)])
+[Rvalue] Aggregate(Adt(DefId(0:3 ~ simple[3ce3]::TwoMembers), 0, [], None, None), [const 42_isize, const 43_isize])
 Statement: Assign((_2, TwoMembers { p1: const 44_isize, p2: (_1.1: isize) }))
-[Rvalue] Use(move _2)
+[Rvalue] Aggregate(Adt(DefId(0:3 ~ simple[3ce3]::TwoMembers), 0, [], None, None), [const 44_isize, (_1.1: isize)])
+[ProjectionElems] [
+    Field(
+        1,
+        isize,
+    ),
+]
+[Projection] place(_1,1)
 Statement: Assign((_4, move _2))
-[Rvalue] Aggregate(Adt(DefId(2:36549 ~ core[b5cd]::option::Option), 1, [TwoMembers], None, None), [move _4])
+[Rvalue] Use(move _2)
 Statement: Assign((_3, std::option::Option::<TwoMembers>::Some(move _4)))
-[Rvalue] Use(move _3)
+[Rvalue] Aggregate(Adt(DefId(2:36549 ~ core[b5cd]::option::Option), 1, [TwoMembers], None, None), [move _4])
 Statement: Assign((_6, move _3))
-[Rvalue] Aggregate(Adt(DefId(2:36549 ~ core[b5cd]::option::Option), 1, [std::option::Option<TwoMembers>], None, None), [move _6])
+[Rvalue] Use(move _3)
 Statement: Assign((_5, std::option::Option::<std::option::Option<TwoMembers>>::Some(move _6)))
-[Rvalue] Use(move _5)
+[Rvalue] Aggregate(Adt(DefId(2:36549 ~ core[b5cd]::option::Option), 1, [std::option::Option<TwoMembers>], None, None), [move _6])
 Statement: Assign((_9, move _5))
+[Rvalue] Use(move _5)
+Terminator: Assign((_8, std::option::Option::<std::option::Option<TwoMembers>>::unwrap[Spanned { node: move _9, span: playground/simple.rs:13:5: 13:6 (#0) }]))
 [MIR] Body for function: std::option::Option::<T>::unwrap
 Basic Block bb0:
 Statement: Assign((_2, discriminant(_1)))
+Terminator: SwitchInt(move _2)
 Next: [bb2, bb3, bb1]
 
 Basic Block bb1:
 Next: !
 
 Basic Block bb2:
+Terminator: Assign((_4, std::option::unwrap_failed[]))
 [MIR] Body for function: std::option::unwrap_failed
 Basic Block bb0:
+Terminator: Assign((_0, core::panicking::panic[Spanned { node: const "called `Option::unwrap()` on a `None` value", span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:2013:11: 2013:56 (#0) }]))
 [MIR] Body for function: core::panicking::panic
 Basic Block bb0:
-[Rvalue] Use(_1)
 Statement: Assign((_7, _1))
-[AggregateKind] _6 <- Array[move _7]
-[Rvalue] Aggregate(Array(&'{erased} str), [move _7])
+[Rvalue] Use(_1)
 Statement: Assign((_6, [move _7]))
+[Rvalue] Aggregate(Array(&'{erased} str), [move _7])
+[AggregateKind] Array([move _7])
 Statement: Assign((_5, &_6))
+[Rvalue] Ref(_6)
 Statement: Assign((_4, &(*_5)))
+[Rvalue] Ref((*_5))
+[ProjectionElems] [
+    Deref,
+]
+[Projection] deref(_5)
+Terminator: Assign((_3, std::fmt::Arguments::<'_>::new_const::<1>[Spanned { node: move _4, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:148:41: 148:48 (#0) }]))
 [MIR] Body for function: std::fmt::Arguments::<'a>::new_const
 Basic Block bb0:
-[Rvalue] Use(const std::fmt::Arguments::<'_>::new_const::<N>::{constant#1})
 Statement: Assign((_2, const std::fmt::Arguments::<'_>::new_const::<N>::{constant#1}))
+[Rvalue] Use(const std::fmt::Arguments::<'_>::new_const::<N>::{constant#1})
 Statement: Assign((_4, &(*_1)))
-[Rvalue] Cast(move _4)
+[Rvalue] Ref((*_1))
+[ProjectionElems] [
+    Deref,
+]
+[Projection] deref(_1)
 Statement: Assign((_3, move _4 as &[&str] (PointerCoercion(Unsize))))
-[Rvalue] Aggregate(Adt(DefId(2:36549 ~ core[b5cd]::option::Option), 0, [&'{erased} [core::fmt::rt::Placeholder]], None, None), [])
+[Rvalue] Cast(move _4)
 Statement: Assign((_5, std::option::Option::<&[core::fmt::rt::Placeholder]>::None))
-[Rvalue] Use(const std::fmt::Arguments::<'_>::new_const::<N>::promoted[0])
+[Rvalue] Aggregate(Adt(DefId(2:36549 ~ core[b5cd]::option::Option), 0, [&'{erased} [core::fmt::rt::Placeholder]], None, None), [])
 Statement: Assign((_10, const std::fmt::Arguments::<'_>::new_const::<N>::promoted[0]))
+[Rvalue] Use(const std::fmt::Arguments::<'_>::new_const::<N>::promoted[0])
 Statement: Assign((_8, &(*_10)))
+[Rvalue] Ref((*_10))
+[ProjectionElems] [
+    Deref,
+]
+[Projection] deref(_10)
 Statement: Assign((_7, &(*_8)))
-[Rvalue] Cast(move _7)
+[Rvalue] Ref((*_8))
+[ProjectionElems] [
+    Deref,
+]
+[Projection] deref(_8)
 Statement: Assign((_6, move _7 as &[core::fmt::rt::Argument<'_>] (PointerCoercion(Unsize))))
-[Rvalue] Aggregate(Adt(DefId(2:37802 ~ core[b5cd]::fmt::Arguments), 0, ['{erased}], None, None), [move _3, move _5, move _6])
+[Rvalue] Cast(move _7)
 Statement: Assign((_0, std::fmt::Arguments::<'_> { pieces: move _3, fmt: move _5, args: move _6 }))
+[Rvalue] Aggregate(Adt(DefId(2:37802 ~ core[b5cd]::fmt::Arguments), 0, ['{erased}], None, None), [move _3, move _5, move _6])
 Next: return
 
 [RPIL] FunCall Result: [
-    "BORROW _4, (*_1)",
+    "BORROW _4, deref(_1)",
     "MOVE _4",
     "BIND _3, _4",
-    "BORROW _8, (*_10)",
-    "BORROW _7, (*_8)",
+    "BORROW _8, deref(_10)",
+    "BORROW _7, deref(_8)",
     "MOVE _7",
     "BIND _6, _7",
     "MOVE _3",
@@ -180,60 +213,72 @@ Next: return
     "MOVE _6",
     "BIND place(_0,3), _6",
 ]
-Statement: TermAssign((_3, std::fmt::Arguments::<'_>::new_const::<1>[move _4]))
 Next: Some(bb1)
 
 Basic Block bb1:
+Terminator: Assign((_2, std::rt::panic_fmt[Spanned { node: move _3, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:148:15: 148:49 (#0) }]))
 [MIR] Body for function: std::rt::panic_fmt
 Basic Block bb0:
-[Rvalue] Use(const false)
 Statement: Assign((_3, const false))
+[Rvalue] Use(const false)
+Terminator: SwitchInt(move _3)
 Next: [bb2, bb1]
 
 Basic Block bb1:
+Terminator: Assign((_4, std::intrinsics::abort[]))
 [MIR] Body for function: std::intrinsics::abort
 MIR not available for `DefId(2:1681 ~ core[b5cd]::intrinsics::{extern#0}::abort)`
 [RPIL] FunCall Result: []
-Statement: TermAssign((_4, std::intrinsics::abort[]))
 Next: None
 
 Basic Block bb2:
-[Rvalue] Use(const ())
 Statement: Assign((_2, const ()))
-[Rvalue] Use(_1)
+[Rvalue] Use(const ())
 Statement: Assign((_6, _1))
+[Rvalue] Use(_1)
+Terminator: Assign((_8, std::panic::Location::<'_>::caller[]))
 [MIR] Body for function: std::panic::Location::<'a>::caller
 Basic Block bb0:
+Terminator: Assign((_0, std::intrinsics::caller_location[]))
 [MIR] Body for function: std::intrinsics::caller_location
 MIR not available for `DefId(2:1706 ~ core[b5cd]::intrinsics::{extern#1}::caller_location)`
 [RPIL] FunCall Result: []
-Statement: TermAssign((_0, std::intrinsics::caller_location[]))
 Next: Some(bb1)
 
 Basic Block bb1:
 Next: return
 
 [RPIL] FunCall Result: []
-Statement: TermAssign((_8, std::panic::Location::<'_>::caller[]))
 Next: Some(bb3)
 
 Basic Block bb3:
 Statement: Assign((_7, &(*_8)))
+[Rvalue] Ref((*_8))
+[ProjectionElems] [
+    Deref,
+]
+[Projection] deref(_8)
+Terminator: Assign((_5, core::panic::panic_info::PanicInfo::<'_>::new[Spanned { node: move _6, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:67:9: 67:12 (#0) }, Spanned { node: move _7, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:68:9: 68:27 (#0) }, Spanned { node: const true, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:69:26: 69:30 (#0) }, Spanned { node: const false, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:70:34: 70:39 (#0) }]))
 [MIR] Body for function: core::panic::panic_info::PanicInfo::<'a>::new
 Basic Block bb0:
 Statement: Assign((_5, &(*_2)))
-[Rvalue] Use(_1)
+[Rvalue] Ref((*_2))
+[ProjectionElems] [
+    Deref,
+]
+[Projection] deref(_2)
 Statement: Assign((_6, _1))
-[Rvalue] Use(_3)
+[Rvalue] Use(_1)
 Statement: Assign((_7, _3))
-[Rvalue] Use(_4)
+[Rvalue] Use(_3)
 Statement: Assign((_8, _4))
-[Rvalue] Aggregate(Adt(DefId(2:36633 ~ core[b5cd]::panic::panic_info::PanicInfo), 0, ['{erased}], None, None), [move _6, move _5, move _7, move _8])
+[Rvalue] Use(_4)
 Statement: Assign((_0, core::panic::panic_info::PanicInfo::<'_> { message: move _6, location: move _5, can_unwind: move _7, force_no_backtrace: move _8 }))
+[Rvalue] Aggregate(Adt(DefId(2:36633 ~ core[b5cd]::panic::panic_info::PanicInfo), 0, ['{erased}], None, None), [move _6, move _5, move _7, move _8])
 Next: return
 
 [RPIL] FunCall Result: [
-    "BORROW _5, (*_2)",
+    "BORROW _5, deref(_2)",
     "BIND _6, _1",
     "BIND _7, _3",
     "BIND _8, _4",
@@ -246,25 +291,29 @@ Next: return
     "MOVE _8",
     "BIND place(_0,4), _8",
 ]
-Statement: TermAssign((_5, core::panic::panic_info::PanicInfo::<'_>::new[move _6, move _7, const true, const false]))
 Next: Some(bb4)
 
 Basic Block bb4:
 Statement: Assign((_10, &_5))
+[Rvalue] Ref(_5)
 Statement: Assign((_9, &(*_10)))
+[Rvalue] Ref((*_10))
+[ProjectionElems] [
+    Deref,
+]
+[Projection] deref(_10)
+Terminator: Assign((_0, std::rt::panic_fmt::panic_impl[Spanned { node: move _9, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:74:25: 74:28 (#0) }]))
 [MIR] Body for function: std::rt::panic_fmt::panic_impl
 MIR not available for `DefId(2:9711 ~ core[b5cd]::panicking::panic_fmt::{extern#0}::panic_impl)`
 [RPIL] FunCall Result: []
-Statement: TermAssign((_0, std::rt::panic_fmt::panic_impl[move _9]))
 Next: None
 
 [RPIL] FunCall Result: [
     "BIND _6, _1",
-    "BORROW _7, (*_8)",
+    "BORROW _7, deref(_8)",
     "BORROW _10, _5",
-    "BORROW _9, (*_10)",
+    "BORROW _9, deref(_10)",
 ]
-Statement: TermAssign((_2, std::rt::panic_fmt[move _3]))
 Next: None
 
 [RPIL] FunCall Result: [
@@ -272,80 +321,116 @@ Next: None
     "MOVE _7",
     "BIND place(_6,1), _7",
     "BORROW _5, _6",
-    "BORROW _4, (*_5)",
+    "BORROW _4, deref(_5)",
 ]
-Statement: TermAssign((_0, core::panicking::panic[const "called `Option::unwrap()` on a `None` value"]))
 Next: None
 
 [RPIL] FunCall Result: []
-Statement: TermAssign((_4, std::option::unwrap_failed[]))
 Next: None
 
 Basic Block bb3:
-[Rvalue] Use(move ((_1 as Some).0: T))
 Statement: Assign((_3, move ((_1 as Some).0: T)))
-[Rvalue] Use(move _3)
+[Rvalue] Use(move ((_1 as Some).0: T))
+[ProjectionElems] [
+    Downcast(
+        Some(
+            "Some",
+        ),
+        1,
+    ),
+    Field(
+        0,
+        T/#0,
+    ),
+]
+[Projection] place(_1,0)
 Statement: Assign((_0, move _3))
+[Rvalue] Use(move _3)
 Next: return
 
 Basic Block bb4:
 Next: !
 
 [RPIL] FunCall Result: [
-    "MOVE ((_1 as Some).0: T)",
-    "BIND _3, ((_1 as Some).0: T)",
+    "MOVE place(_1,0)",
+    "BIND _3, place(_1,0)",
     "MOVE _3",
     "BIND _0, _3",
 ]
-Statement: TermAssign((_8, std::option::Option::<std::option::Option<TwoMembers>>::unwrap[move _9]))
 Next: Some(bb1)
 
 Basic Block bb1:
+Terminator: Assign((_7, std::option::Option::<TwoMembers>::unwrap[Spanned { node: move _8, span: playground/simple.rs:13:5: 13:15 (#0) }]))
 [MIR] Body for function: std::option::Option::<T>::unwrap
 Basic Block bb0:
 Statement: Assign((_2, discriminant(_1)))
+Terminator: SwitchInt(move _2)
 Next: [bb2, bb3, bb1]
 
 Basic Block bb1:
 Next: !
 
 Basic Block bb2:
+Terminator: Assign((_4, std::option::unwrap_failed[]))
 [MIR] Body for function: std::option::unwrap_failed
 Basic Block bb0:
+Terminator: Assign((_0, core::panicking::panic[Spanned { node: const "called `Option::unwrap()` on a `None` value", span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:2013:11: 2013:56 (#0) }]))
 [MIR] Body for function: core::panicking::panic
 Basic Block bb0:
-[Rvalue] Use(_1)
 Statement: Assign((_7, _1))
-[AggregateKind] _6 <- Array[move _7]
-[Rvalue] Aggregate(Array(&'{erased} str), [move _7])
+[Rvalue] Use(_1)
 Statement: Assign((_6, [move _7]))
+[Rvalue] Aggregate(Array(&'{erased} str), [move _7])
+[AggregateKind] Array([move _7])
 Statement: Assign((_5, &_6))
+[Rvalue] Ref(_6)
 Statement: Assign((_4, &(*_5)))
+[Rvalue] Ref((*_5))
+[ProjectionElems] [
+    Deref,
+]
+[Projection] deref(_5)
+Terminator: Assign((_3, std::fmt::Arguments::<'_>::new_const::<1>[Spanned { node: move _4, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:148:41: 148:48 (#0) }]))
 [MIR] Body for function: std::fmt::Arguments::<'a>::new_const
 Basic Block bb0:
-[Rvalue] Use(const std::fmt::Arguments::<'_>::new_const::<N>::{constant#1})
 Statement: Assign((_2, const std::fmt::Arguments::<'_>::new_const::<N>::{constant#1}))
+[Rvalue] Use(const std::fmt::Arguments::<'_>::new_const::<N>::{constant#1})
 Statement: Assign((_4, &(*_1)))
-[Rvalue] Cast(move _4)
+[Rvalue] Ref((*_1))
+[ProjectionElems] [
+    Deref,
+]
+[Projection] deref(_1)
 Statement: Assign((_3, move _4 as &[&str] (PointerCoercion(Unsize))))
-[Rvalue] Aggregate(Adt(DefId(2:36549 ~ core[b5cd]::option::Option), 0, [&'{erased} [core::fmt::rt::Placeholder]], None, None), [])
+[Rvalue] Cast(move _4)
 Statement: Assign((_5, std::option::Option::<&[core::fmt::rt::Placeholder]>::None))
-[Rvalue] Use(const std::fmt::Arguments::<'_>::new_const::<N>::promoted[0])
+[Rvalue] Aggregate(Adt(DefId(2:36549 ~ core[b5cd]::option::Option), 0, [&'{erased} [core::fmt::rt::Placeholder]], None, None), [])
 Statement: Assign((_10, const std::fmt::Arguments::<'_>::new_const::<N>::promoted[0]))
+[Rvalue] Use(const std::fmt::Arguments::<'_>::new_const::<N>::promoted[0])
 Statement: Assign((_8, &(*_10)))
+[Rvalue] Ref((*_10))
+[ProjectionElems] [
+    Deref,
+]
+[Projection] deref(_10)
 Statement: Assign((_7, &(*_8)))
-[Rvalue] Cast(move _7)
+[Rvalue] Ref((*_8))
+[ProjectionElems] [
+    Deref,
+]
+[Projection] deref(_8)
 Statement: Assign((_6, move _7 as &[core::fmt::rt::Argument<'_>] (PointerCoercion(Unsize))))
-[Rvalue] Aggregate(Adt(DefId(2:37802 ~ core[b5cd]::fmt::Arguments), 0, ['{erased}], None, None), [move _3, move _5, move _6])
+[Rvalue] Cast(move _7)
 Statement: Assign((_0, std::fmt::Arguments::<'_> { pieces: move _3, fmt: move _5, args: move _6 }))
+[Rvalue] Aggregate(Adt(DefId(2:37802 ~ core[b5cd]::fmt::Arguments), 0, ['{erased}], None, None), [move _3, move _5, move _6])
 Next: return
 
 [RPIL] FunCall Result: [
-    "BORROW _4, (*_1)",
+    "BORROW _4, deref(_1)",
     "MOVE _4",
     "BIND _3, _4",
-    "BORROW _8, (*_10)",
-    "BORROW _7, (*_8)",
+    "BORROW _8, deref(_10)",
+    "BORROW _7, deref(_8)",
     "MOVE _7",
     "BIND _6, _7",
     "MOVE _3",
@@ -355,60 +440,72 @@ Next: return
     "MOVE _6",
     "BIND place(_0,3), _6",
 ]
-Statement: TermAssign((_3, std::fmt::Arguments::<'_>::new_const::<1>[move _4]))
 Next: Some(bb1)
 
 Basic Block bb1:
+Terminator: Assign((_2, std::rt::panic_fmt[Spanned { node: move _3, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:148:15: 148:49 (#0) }]))
 [MIR] Body for function: std::rt::panic_fmt
 Basic Block bb0:
-[Rvalue] Use(const false)
 Statement: Assign((_3, const false))
+[Rvalue] Use(const false)
+Terminator: SwitchInt(move _3)
 Next: [bb2, bb1]
 
 Basic Block bb1:
+Terminator: Assign((_4, std::intrinsics::abort[]))
 [MIR] Body for function: std::intrinsics::abort
 MIR not available for `DefId(2:1681 ~ core[b5cd]::intrinsics::{extern#0}::abort)`
 [RPIL] FunCall Result: []
-Statement: TermAssign((_4, std::intrinsics::abort[]))
 Next: None
 
 Basic Block bb2:
-[Rvalue] Use(const ())
 Statement: Assign((_2, const ()))
-[Rvalue] Use(_1)
+[Rvalue] Use(const ())
 Statement: Assign((_6, _1))
+[Rvalue] Use(_1)
+Terminator: Assign((_8, std::panic::Location::<'_>::caller[]))
 [MIR] Body for function: std::panic::Location::<'a>::caller
 Basic Block bb0:
+Terminator: Assign((_0, std::intrinsics::caller_location[]))
 [MIR] Body for function: std::intrinsics::caller_location
 MIR not available for `DefId(2:1706 ~ core[b5cd]::intrinsics::{extern#1}::caller_location)`
 [RPIL] FunCall Result: []
-Statement: TermAssign((_0, std::intrinsics::caller_location[]))
 Next: Some(bb1)
 
 Basic Block bb1:
 Next: return
 
 [RPIL] FunCall Result: []
-Statement: TermAssign((_8, std::panic::Location::<'_>::caller[]))
 Next: Some(bb3)
 
 Basic Block bb3:
 Statement: Assign((_7, &(*_8)))
+[Rvalue] Ref((*_8))
+[ProjectionElems] [
+    Deref,
+]
+[Projection] deref(_8)
+Terminator: Assign((_5, core::panic::panic_info::PanicInfo::<'_>::new[Spanned { node: move _6, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:67:9: 67:12 (#0) }, Spanned { node: move _7, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:68:9: 68:27 (#0) }, Spanned { node: const true, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:69:26: 69:30 (#0) }, Spanned { node: const false, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:70:34: 70:39 (#0) }]))
 [MIR] Body for function: core::panic::panic_info::PanicInfo::<'a>::new
 Basic Block bb0:
 Statement: Assign((_5, &(*_2)))
-[Rvalue] Use(_1)
+[Rvalue] Ref((*_2))
+[ProjectionElems] [
+    Deref,
+]
+[Projection] deref(_2)
 Statement: Assign((_6, _1))
-[Rvalue] Use(_3)
+[Rvalue] Use(_1)
 Statement: Assign((_7, _3))
-[Rvalue] Use(_4)
+[Rvalue] Use(_3)
 Statement: Assign((_8, _4))
-[Rvalue] Aggregate(Adt(DefId(2:36633 ~ core[b5cd]::panic::panic_info::PanicInfo), 0, ['{erased}], None, None), [move _6, move _5, move _7, move _8])
+[Rvalue] Use(_4)
 Statement: Assign((_0, core::panic::panic_info::PanicInfo::<'_> { message: move _6, location: move _5, can_unwind: move _7, force_no_backtrace: move _8 }))
+[Rvalue] Aggregate(Adt(DefId(2:36633 ~ core[b5cd]::panic::panic_info::PanicInfo), 0, ['{erased}], None, None), [move _6, move _5, move _7, move _8])
 Next: return
 
 [RPIL] FunCall Result: [
-    "BORROW _5, (*_2)",
+    "BORROW _5, deref(_2)",
     "BIND _6, _1",
     "BIND _7, _3",
     "BIND _8, _4",
@@ -421,25 +518,29 @@ Next: return
     "MOVE _8",
     "BIND place(_0,4), _8",
 ]
-Statement: TermAssign((_5, core::panic::panic_info::PanicInfo::<'_>::new[move _6, move _7, const true, const false]))
 Next: Some(bb4)
 
 Basic Block bb4:
 Statement: Assign((_10, &_5))
+[Rvalue] Ref(_5)
 Statement: Assign((_9, &(*_10)))
+[Rvalue] Ref((*_10))
+[ProjectionElems] [
+    Deref,
+]
+[Projection] deref(_10)
+Terminator: Assign((_0, std::rt::panic_fmt::panic_impl[Spanned { node: move _9, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:74:25: 74:28 (#0) }]))
 [MIR] Body for function: std::rt::panic_fmt::panic_impl
 MIR not available for `DefId(2:9711 ~ core[b5cd]::panicking::panic_fmt::{extern#0}::panic_impl)`
 [RPIL] FunCall Result: []
-Statement: TermAssign((_0, std::rt::panic_fmt::panic_impl[move _9]))
 Next: None
 
 [RPIL] FunCall Result: [
     "BIND _6, _1",
-    "BORROW _7, (*_8)",
+    "BORROW _7, deref(_8)",
     "BORROW _10, _5",
-    "BORROW _9, (*_10)",
+    "BORROW _9, deref(_10)",
 ]
-Statement: TermAssign((_2, std::rt::panic_fmt[move _3]))
 Next: None
 
 [RPIL] FunCall Result: [
@@ -447,37 +548,54 @@ Next: None
     "MOVE _7",
     "BIND place(_6,1), _7",
     "BORROW _5, _6",
-    "BORROW _4, (*_5)",
+    "BORROW _4, deref(_5)",
 ]
-Statement: TermAssign((_0, core::panicking::panic[const "called `Option::unwrap()` on a `None` value"]))
 Next: None
 
 [RPIL] FunCall Result: []
-Statement: TermAssign((_4, std::option::unwrap_failed[]))
 Next: None
 
 Basic Block bb3:
-[Rvalue] Use(move ((_1 as Some).0: T))
 Statement: Assign((_3, move ((_1 as Some).0: T)))
-[Rvalue] Use(move _3)
+[Rvalue] Use(move ((_1 as Some).0: T))
+[ProjectionElems] [
+    Downcast(
+        Some(
+            "Some",
+        ),
+        1,
+    ),
+    Field(
+        0,
+        T/#0,
+    ),
+]
+[Projection] place(_1,0)
 Statement: Assign((_0, move _3))
+[Rvalue] Use(move _3)
 Next: return
 
 Basic Block bb4:
 Next: !
 
 [RPIL] FunCall Result: [
-    "MOVE ((_1 as Some).0: T)",
-    "BIND _3, ((_1 as Some).0: T)",
+    "MOVE place(_1,0)",
+    "BIND _3, place(_1,0)",
     "MOVE _3",
     "BIND _0, _3",
 ]
-Statement: TermAssign((_7, std::option::Option::<TwoMembers>::unwrap[move _8]))
 Next: Some(bb2)
 
 Basic Block bb2:
-[Rvalue] Use((_7.0: isize))
 Statement: Assign((_0, (_7.0: isize)))
+[Rvalue] Use((_7.0: isize))
+[ProjectionElems] [
+    Field(
+        0,
+        isize,
+    ),
+]
+[Projection] place(_7,0)
 Next: return
 
 [RPIL] Result: [

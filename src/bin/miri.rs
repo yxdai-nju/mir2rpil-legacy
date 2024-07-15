@@ -96,15 +96,29 @@ fn def_id_of_func_operand<'tcx>(func: &mir::Operand<'tcx>) -> hir::def_id::DefId
     }
 }
 
+fn place_project<'tcx>(place: &'tcx mir::Place<'tcx>, idx: usize) -> String {
+    assert!(idx < place.projection.len());
+    let rplace = &place.projection[idx];
+    match rplace {
+        mir::ProjectionElem::Field(ridx, _) => format!("place({:?},{:?})", place.local, ridx),
+        mir::ProjectionElem::Deref => format!("deref({:?})", place.local),
+        mir::ProjectionElem::Downcast(..) => place_project(place, idx + 1),
+        _ => {
+            let x = discriminant(rplace);
+            println!("[ProjectionElem-{:?}] Unknown `{:?}`", x, rplace);
+            unimplemented!()
+        }
+    }
+}
+
 fn rpil_format_place<'tcx>(place: &'tcx mir::Place<'tcx>) -> String {
     if place.projection.len() == 0 {
         return format!("{:?}", place);
     }
-    if let mir::ProjectionElem::Field(ridx, _) = &place.projection[0] {
-        format!("place({:?},{:?})", place.local, ridx)
-    } else {
-        format!("{:?}", place)
-    }
+    println!("[ProjectionElems] {:#?}", place.projection);
+    let projection = place_project(place, 0);
+    println!("[Projection] {}", projection);
+    projection
 }
 
 #[allow(clippy::needless_lifetimes)]
@@ -124,11 +138,18 @@ fn rpil_of_func<'tcx>(tcx: TyCtxt<'tcx>, func_id: hir::def_id::DefId) -> Vec<Str
         println!("Basic Block {:?}:", bb);
         // BB statements
         for statement in &block_data.statements {
-            match statement.kind {
-                mir::StatementKind::Assign(ref p) => {
+            let statement = &statement.kind;
+            match statement {
+                mir::StatementKind::Assign(p) => {
+                    println!("Statement: {:?}", statement);
                     let (ref place, ref rvalue) = **p;
                     match rvalue {
                         mir::Rvalue::Use(operand) | mir::Rvalue::Cast(_, operand, _) => {
+                            if let mir::Rvalue::Use(_) = rvalue {
+                                println!("[Rvalue] Use({:?})", operand);
+                            } else {
+                                println!("[Rvalue] Cast({:?})", operand);
+                            }
                             match operand {
                                 mir::Operand::Copy(rplace) => {
                                     let rplace_formatted = rpil_format_place(rplace);
@@ -141,17 +162,13 @@ fn rpil_of_func<'tcx>(tcx: TyCtxt<'tcx>, func_id: hir::def_id::DefId) -> Vec<Str
                                 }
                                 mir::Operand::Constant(_) => {}
                             }
-                            if let mir::Rvalue::Use(_) = rvalue {
-                                println!("[Rvalue] Use({:?})", operand);
-                            } else {
-                                println!("[Rvalue] Cast({:?})", operand);
-                            }
                         }
                         mir::Rvalue::Aggregate(agg_kind, values) => {
+                            println!("[Rvalue] Aggregate({:?}, {:?})", agg_kind, values);
                             let agg_kind = &**agg_kind;
                             match agg_kind {
                                 mir::AggregateKind::Array(..) => {
-                                    println!("[AggregateKind] {:?} <- Array{:?}", place, values);
+                                    println!("[AggregateKind] Array({:?})", values);
                                     for (lidx, value) in values.iter().enumerate() {
                                         match value {
                                             mir::Operand::Copy(rplace) => {
@@ -227,63 +244,68 @@ fn rpil_of_func<'tcx>(tcx: TyCtxt<'tcx>, func_id: hir::def_id::DefId) -> Vec<Str
                                         }
                                     },
                                 _ => {
-                                    println!("unknown AggregateKind: {:?}", discriminant(agg_kind));
+                                    let x = discriminant(agg_kind);
+                                    println!("[AggregateKind-{:?}] Unknown `{:?}`", x, agg_kind);
                                     unimplemented!();
                                 }
                             };
-                            println!("[Rvalue] Aggregate({:?}, {:?})", agg_kind, values);
                         }
                         mir::Rvalue::Ref(_, _, rplace) => {
+                            println!("[Rvalue] Ref({:?})", rplace);
                             let rplace_formatted = rpil_format_place(rplace);
                             emit_rpil(format!("BORROW {:?}, {}", place, rplace_formatted));
                         }
                         mir::Rvalue::Discriminant(..) => {}
                         _ => {
                             let x = discriminant(rvalue);
-                            println!("[Rvalue-{:?}] Unknown: {:?}", x, rvalue);
-                            println!("Statement: {:?}", statement.kind);
+                            println!("[Rvalue-{:?}] Unknown `{:?}`", x, rvalue);
                             unimplemented!();
                         }
                     }
-                    println!("Statement: {:?}", statement.kind);
                 }
                 mir::StatementKind::StorageDead(..)
                 | mir::StatementKind::StorageLive(..)
                 | mir::StatementKind::Retag(..)
                 | mir::StatementKind::PlaceMention(..) => {}
                 _ => {
-                    println!("Unknown Statement: {:?}", statement.kind);
+                    let x = discriminant(statement);
+                    println!("Statement-{:?}: Unknown `{:?}`", x, statement);
                     unimplemented!();
                 }
             }
         }
         // BB terminator
         if let Some(terminator) = &block_data.terminator {
-            match terminator.kind {
+            let terminator = &terminator.kind;
+            match terminator {
                 mir::TerminatorKind::Call { ref func, ref args, destination, target, .. } => {
-                    // let func = mir_body_of_func_operand(tcx, func);
-                    let func_id2 = def_id_of_func_operand(func);
-                    println!("[RPIL] FunCall Result: {:#?}", rpil_of_func(tcx, func_id2));
-                    let args: Vec<_> = args.iter().map(|s| s.node.clone()).collect();
-                    println!("Statement: TermAssign(({:?}, {:?}{:?}))", destination, func, args);
+                    println!("Terminator: Assign(({:?}, {:?}{:?}))", destination, func, args);
+                    let called_func_id = def_id_of_func_operand(func);
+                    println!("[RPIL] FunCall Result: {:#?}", rpil_of_func(tcx, called_func_id));
+                    // let args: Vec<_> = args.iter().map(|s| s.node.clone()).collect();
                     println!("Next: {:?}", target);
                 }
                 mir::TerminatorKind::Drop { place, target, .. } => {
-                    println!("Statement: Drop({:?})", place);
+                    println!("Terminator: Drop({:?})", place);
                     println!("Next: {:?}", target);
                 }
-                mir::TerminatorKind::Assert { target, .. } => println!("Next: {:?}", target),
+                mir::TerminatorKind::Assert { cond, msg, target, .. } => {
+                    println!("Terminator: Assert({:?}, {:?})", cond, msg);
+                    println!("Next: {:?}", target);
+                }
                 mir::TerminatorKind::Return => {
                     println!("Next: return");
                 }
                 mir::TerminatorKind::UnwindResume | mir::TerminatorKind::Unreachable => {
                     println!("Next: !");
                 }
-                mir::TerminatorKind::SwitchInt { ref targets, .. } => {
+                mir::TerminatorKind::SwitchInt { discr, ref targets, .. } => {
+                    println!("Terminator: SwitchInt({:?})", discr);
                     println!("Next: {:?}", targets.all_targets());
                 }
                 _ => {
-                    println!("unknown TerminatorKind: {:?}", discriminant(&terminator.kind));
+                    let x = discriminant(terminator);
+                    println!("Terminator-{:?}: Unknown `{:?}`", x, terminator);
                     unimplemented!();
                 }
             };
