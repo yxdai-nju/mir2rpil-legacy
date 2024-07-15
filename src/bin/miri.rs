@@ -80,6 +80,22 @@ fn mir_body_of_func_operand<'tcx>(
     }
 }
 
+#[allow(clippy::needless_lifetimes)]
+fn def_id_of_func_operand<'tcx>(func: &mir::Operand<'tcx>) -> hir::def_id::DefId {
+    match func {
+        mir::Operand::Constant(operand) =>
+            match operand.const_ {
+                mir::Const::Val(_, fn_def) =>
+                    match fn_def.kind() {
+                        ty::FnDef(def_id, _) => *def_id,
+                        _ => unimplemented!(),
+                    },
+                mir::Const::Unevaluated(_, _) | mir::Const::Ty(_, _) => unimplemented!(),
+            },
+        mir::Operand::Copy(_) | mir::Operand::Move(_) => unimplemented!(),
+    }
+}
+
 fn rpil_format_place<'tcx>(place: &'tcx mir::Place<'tcx>) -> String {
     if place.projection.len() == 0 {
         return format!("{:?}", place);
@@ -89,6 +105,192 @@ fn rpil_format_place<'tcx>(place: &'tcx mir::Place<'tcx>) -> String {
     } else {
         format!("{:?}", place)
     }
+}
+
+#[allow(clippy::needless_lifetimes)]
+fn rpil_of_func<'tcx>(tcx: TyCtxt<'tcx>, func_id: hir::def_id::DefId) -> Vec<String> {
+    let mut rpil = vec![];
+    let mut emit_rpil = |s: String| {
+        rpil.push(s);
+    };
+    let fn_name = tcx.def_path_str(func_id);
+    println!("[MIR] Body for function: {}", fn_name);
+    if !tcx.is_mir_available(func_id) {
+        println!("MIR not available for `{:?}`", func_id);
+        return vec![];
+    }
+    let body = tcx.optimized_mir(func_id);
+    for (bb, block_data) in body.basic_blocks.iter_enumerated() {
+        println!("Basic Block {:?}:", bb);
+        // BB statements
+        for statement in &block_data.statements {
+            match statement.kind {
+                mir::StatementKind::Assign(ref p) => {
+                    let (ref place, ref rvalue) = **p;
+                    match rvalue {
+                        mir::Rvalue::Use(operand) | mir::Rvalue::Cast(_, operand, _) => {
+                            match operand {
+                                mir::Operand::Copy(rplace) => {
+                                    let rplace_formatted = rpil_format_place(rplace);
+                                    emit_rpil(format!("BIND {:?}, {}", place, rplace_formatted));
+                                }
+                                mir::Operand::Move(rplace) => {
+                                    let rplace_formatted = rpil_format_place(rplace);
+                                    emit_rpil(format!("MOVE {}", rplace_formatted));
+                                    emit_rpil(format!("BIND {:?}, {}", place, rplace_formatted));
+                                }
+                                mir::Operand::Constant(_) => {}
+                            }
+                            if let mir::Rvalue::Use(_) = rvalue {
+                                println!("[Rvalue] Use({:?})", operand);
+                            } else {
+                                println!("[Rvalue] Cast({:?})", operand);
+                            }
+                        }
+                        mir::Rvalue::Aggregate(agg_kind, values) => {
+                            let agg_kind = &**agg_kind;
+                            match agg_kind {
+                                mir::AggregateKind::Array(..) => {
+                                    println!("[AggregateKind] {:?} <- Array{:?}", place, values);
+                                    for (lidx, value) in values.iter().enumerate() {
+                                        match value {
+                                            mir::Operand::Copy(rplace) => {
+                                                let rplace_formatted = rpil_format_place(rplace);
+                                                emit_rpil(format!(
+                                                    "BIND place({:?},{:?}), {}",
+                                                    place,
+                                                    lidx + 1,
+                                                    rplace_formatted
+                                                ));
+                                            }
+                                            mir::Operand::Move(rplace) => {
+                                                let rplace_formatted = rpil_format_place(rplace);
+                                                emit_rpil(format!("MOVE {}", rplace_formatted));
+                                                emit_rpil(format!(
+                                                    "BIND place({:?},{:?}), {}",
+                                                    place,
+                                                    lidx + 1,
+                                                    rplace_formatted
+                                                ));
+                                            }
+                                            mir::Operand::Constant(_) => {}
+                                        }
+                                    }
+                                }
+                                mir::AggregateKind::Adt(_, variant_idx, _, _, _) =>
+                                    if *variant_idx == VariantIdx::from_usize(0) {
+                                        for (lidx, value) in values.iter().enumerate() {
+                                            match value {
+                                                mir::Operand::Copy(rplace) => {
+                                                    let rplace_formatted =
+                                                        rpil_format_place(rplace);
+                                                    emit_rpil(format!(
+                                                        "BIND place({:?},{:?}), {}",
+                                                        place,
+                                                        lidx + 1,
+                                                        rplace_formatted
+                                                    ));
+                                                }
+                                                mir::Operand::Move(rplace) => {
+                                                    let rplace_formatted =
+                                                        rpil_format_place(rplace);
+                                                    emit_rpil(format!("MOVE {}", rplace_formatted));
+                                                    emit_rpil(format!(
+                                                        "BIND place({:?},{:?}), {}",
+                                                        place,
+                                                        lidx + 1,
+                                                        rplace_formatted
+                                                    ));
+                                                }
+                                                mir::Operand::Constant(_) => {}
+                                            }
+                                        }
+                                    } else {
+                                        let value = values.get(FieldIdx::from_usize(0)).unwrap();
+                                        match value {
+                                            mir::Operand::Copy(rplace) => {
+                                                let rplace_formatted = rpil_format_place(rplace);
+                                                emit_rpil(format!(
+                                                    "BIND place({:?},{:?}), {}",
+                                                    place, variant_idx, rplace_formatted
+                                                ));
+                                            }
+                                            mir::Operand::Move(rplace) => {
+                                                let rplace_formatted = rpil_format_place(rplace);
+                                                emit_rpil(format!("MOVE {}", rplace_formatted));
+                                                emit_rpil(format!(
+                                                    "BIND place({:?},{:?}), {}",
+                                                    place, variant_idx, rplace_formatted
+                                                ));
+                                            }
+                                            mir::Operand::Constant(_) => {}
+                                        }
+                                    },
+                                _ => {
+                                    println!("unknown AggregateKind: {:?}", discriminant(agg_kind));
+                                    unimplemented!();
+                                }
+                            };
+                            println!("[Rvalue] Aggregate({:?}, {:?})", agg_kind, values);
+                        }
+                        mir::Rvalue::Ref(_, _, rplace) => {
+                            let rplace_formatted = rpil_format_place(rplace);
+                            emit_rpil(format!("BORROW {:?}, {}", place, rplace_formatted));
+                        }
+                        mir::Rvalue::Discriminant(..) => {}
+                        _ => {
+                            let x = discriminant(rvalue);
+                            println!("[Rvalue-{:?}] Unknown: {:?}", x, rvalue);
+                            println!("Statement: {:?}", statement.kind);
+                            unimplemented!();
+                        }
+                    }
+                    println!("Statement: {:?}", statement.kind);
+                }
+                mir::StatementKind::StorageDead(..)
+                | mir::StatementKind::StorageLive(..)
+                | mir::StatementKind::Retag(..)
+                | mir::StatementKind::PlaceMention(..) => {}
+                _ => {
+                    println!("Unknown Statement: {:?}", statement.kind);
+                    unimplemented!();
+                }
+            }
+        }
+        // BB terminator
+        if let Some(terminator) = &block_data.terminator {
+            match terminator.kind {
+                mir::TerminatorKind::Call { ref func, ref args, destination, target, .. } => {
+                    // let func = mir_body_of_func_operand(tcx, func);
+                    let func_id2 = def_id_of_func_operand(func);
+                    println!("[RPIL] FunCall Result: {:#?}", rpil_of_func(tcx, func_id2));
+                    let args: Vec<_> = args.iter().map(|s| s.node.clone()).collect();
+                    println!("Statement: TermAssign(({:?}, {:?}{:?}))", destination, func, args);
+                    println!("Next: {:?}", target);
+                }
+                mir::TerminatorKind::Drop { place, target, .. } => {
+                    println!("Statement: Drop({:?})", place);
+                    println!("Next: {:?}", target);
+                }
+                mir::TerminatorKind::Assert { target, .. } => println!("Next: {:?}", target),
+                mir::TerminatorKind::Return => {
+                    println!("Next: return");
+                }
+                mir::TerminatorKind::UnwindResume | mir::TerminatorKind::Unreachable => {
+                    println!("Next: !");
+                }
+                mir::TerminatorKind::SwitchInt { ref targets, .. } => {
+                    println!("Next: {:?}", targets.all_targets());
+                }
+                _ => {
+                    println!("unknown TerminatorKind: {:?}", discriminant(&terminator.kind));
+                    unimplemented!();
+                }
+            };
+        }
+        println!();
+    }
+    rpil
 }
 
 impl rustc_driver::Callbacks for MiriCompilerCalls {
@@ -117,147 +319,18 @@ impl rustc_driver::Callbacks for MiriCompilerCalls {
             let items = tcx.hir_crate_items(());
             let free_items_owner_id = items.free_items().map(|id| id.owner_id);
             let impl_items_owner_id = items.impl_items().map(|id| id.owner_id);
-            let funcs_owner_id = free_items_owner_id.chain(impl_items_owner_id);
-            for owner_id in funcs_owner_id {
-                if let hir::def::DefKind::Fn | hir::def::DefKind::AssocFn = tcx.def_kind(owner_id) {
-                    if tcx.visibility(owner_id).is_public() {
-                        pub_fns.push(owner_id);
+            let func_ids = free_items_owner_id.chain(impl_items_owner_id).map(|id| id.to_def_id());
+            for func_id in func_ids {
+                if let hir::def::DefKind::Fn | hir::def::DefKind::AssocFn = tcx.def_kind(func_id) {
+                    if tcx.visibility(func_id).is_public() {
+                        pub_fns.push(func_id);
                     }
                 }
             }
             println!("Public functions: {:?}\n", pub_fns);
             for pub_fn in pub_fns {
-                let fn_name = tcx.def_path_str(pub_fn.to_def_id());
-                println!("[MIR] Body for function: {}", fn_name);
-                let body = tcx.optimized_mir(pub_fn);
-                for (bb, block_data) in body.basic_blocks.iter_enumerated() {
-                    println!("Basic Block {:?}:", bb);
-                    // BB statements
-                    for statement in &block_data.statements {
-                        match statement.kind {
-                            mir::StatementKind::Assign(ref p) => {
-                                let (ref place, ref rvalue) = **p;
-                                match rvalue {
-                                    mir::Rvalue::Use(operand) => {
-                                        match operand {
-                                            mir::Operand::Copy(rplace) => {
-                                                let rplace_formatted = rpil_format_place(rplace);
-                                                println!("[RPIL-EMIT] BIND {:?}, {}", place, rplace_formatted);
-                                            }
-                                            mir::Operand::Move(rplace) => {
-                                                let rplace_formatted = rpil_format_place(rplace);
-                                                println!("[RPIL-EMIT] MOVE {}", rplace_formatted);
-                                                println!("[RPIL-EMIT] BIND {:?}, {}", place, rplace_formatted);
-                                            }
-                                            mir::Operand::Constant(_) => {}
-                                        }
-                                        println!("[Rvalue] Use({:?})", operand);
-                                    }
-                                    mir::Rvalue::Aggregate(agg_kind, values) => {
-                                        match &**agg_kind {
-                                            mir::AggregateKind::Adt(_, variant_idx, _, _, _) =>
-                                                if *variant_idx == VariantIdx::from_usize(0) {
-                                                    for (lidx, value) in values.iter().enumerate() {
-                                                        match value {
-                                                            mir::Operand::Copy(rplace) => {
-                                                                let rplace_formatted = rpil_format_place(rplace);
-                                                                println!(
-                                                                    "[RPIL-EMIT] BIND place({:?},{:?}), {}",
-                                                                    place, lidx + 1, rplace_formatted
-                                                                );
-                                                            }
-                                                            mir::Operand::Move(rplace) => {
-                                                                let rplace_formatted = rpil_format_place(rplace);
-                                                                println!("[RPIL-EMIT] MOVE {}", rplace_formatted);
-                                                                println!(
-                                                                    "[RPIL-EMIT] BIND place({:?},{:?}), {}",
-                                                                    place, lidx + 1, rplace_formatted
-                                                                );
-                                                            }
-                                                            mir::Operand::Constant(_) => {}
-                                                        }
-                                                    }
-                                                } else {
-                                                    let value = values.get(FieldIdx::from_usize(0)).unwrap();
-                                                    match value {
-                                                        mir::Operand::Copy(rplace) => {
-                                                            let rplace_formatted = rpil_format_place(rplace);
-                                                            println!(
-                                                                "[RPIL-EMIT] BIND place({:?},{:?}), {}",
-                                                                place, variant_idx, rplace_formatted
-                                                            );
-                                                        }
-                                                        mir::Operand::Move(rplace) => {
-                                                            let rplace_formatted = rpil_format_place(rplace);
-                                                            println!("[RPIL-EMIT] MOVE {}", rplace_formatted);
-                                                            println!(
-                                                                "[RPIL-EMIT] BIND place({:?},{:?}), {}",
-                                                                place, variant_idx, rplace_formatted
-                                                            );
-                                                        }
-                                                        mir::Operand::Constant(_) => {}
-                                                    }
-                                                },
-                                            _ => unimplemented!(),
-                                        };
-                                        println!(
-                                            "[Rvalue] Aggregate({:?}, {:?})",
-                                            agg_kind, values
-                                        );
-                                    }
-                                    _ => {
-                                        let x = discriminant(rvalue);
-                                        println!("[Rvalue-{:?}] {:?}", x, rvalue);
-                                    }
-                                }
-                                println!("Statement: {:?}", statement.kind);
-                            }
-                            mir::StatementKind::StorageDead(_)
-                            | mir::StatementKind::StorageLive(_)
-                            | mir::StatementKind::Retag(_, _) => {}
-                            _ => {
-                                println!("Unknown Statement: {:?}", statement.kind);
-                            }
-                        }
-                    }
-                    // BB terminator
-                    if let Some(terminator) = &block_data.terminator {
-                        match terminator.kind {
-                            mir::TerminatorKind::Call {
-                                ref func,
-                                ref args,
-                                destination,
-                                target,
-                                ..
-                            } => {
-                                let func = mir_body_of_func_operand(tcx, func);
-                                let args: Vec<_> = args.iter().map(|s| s.node.clone()).collect();
-                                println!(
-                                    "Statement: TermAssign(({:?}, {:?}{:?}))",
-                                    destination, func, args
-                                );
-                                println!("Next: {:?}", target);
-                            }
-                            mir::TerminatorKind::Drop { place, target, .. } => {
-                                println!("Statement: Drop({:?})", place);
-                                println!("Next: {:?}", target);
-                            }
-                            mir::TerminatorKind::Assert { target, .. } =>
-                                println!("Next: {:?}", target),
-                            mir::TerminatorKind::Return => {
-                                println!("Next: return");
-                            }
-                            mir::TerminatorKind::UnwindResume => {
-                                println!("Next: !");
-                            }
-                            _ => {
-                                unimplemented!();
-                            }
-                        };
-                    }
-                    println!();
-                }
-                println!();
+                let rpil = rpil_of_func(tcx, pub_fn);
+                println!("[RPIL] Result: {:#?}", rpil);
             }
         });
 

@@ -18,14 +18,20 @@ warning: field `miri_config` is never read
    |
    = note: `#[warn(dead_code)]` on by default
 
+warning: function `mir_body_of_func_operand` is never used
+  --> src/bin/miri.rs:58:4
+   |
+58 | fn mir_body_of_func_operand<'tcx>(
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^
+
 warning: function `init_late_loggers` is never used
-   --> src/bin/miri.rs:464:4
+   --> src/bin/miri.rs:537:4
     |
-464 | fn init_late_loggers(early_dcx: &EarlyDiagCtxt, tcx: TyCtxt<'_>) {
+537 | fn init_late_loggers(early_dcx: &EarlyDiagCtxt, tcx: TyCtxt<'_>) {
     |    ^^^^^^^^^^^^^^^^^
 
-warning: `miri` (bin "miri") generated 3 warnings (run `cargo clippy --fix --bin "miri"` to apply 1 suggestion)
-warning: `miri` (bin "miri" test) generated 3 warnings (3 duplicates)
+warning: `miri` (bin "miri") generated 4 warnings (run `cargo clippy --fix --bin "miri"` to apply 1 suggestion)
+warning: `miri` (bin "miri" test) generated 4 warnings (4 duplicates)
     Finished `dev` profile [optimized + debuginfo] target(s) in 0.05s
 $ cargo +miri clippy --manifest-path /Users/dnomkr/src/mir2rpil/cargo-miri/Cargo.toml --all-targets
     Finished `dev` profile [optimized + debuginfo] target(s) in 0.01s
@@ -49,10 +55,16 @@ warning: field `miri_config` is never read
    |
    = note: `#[warn(dead_code)]` on by default
 
+warning: function `mir_body_of_func_operand` is never used
+  --> src/bin/miri.rs:58:4
+   |
+58 | fn mir_body_of_func_operand<'tcx>(
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^
+
 warning: function `init_late_loggers` is never used
-   --> src/bin/miri.rs:464:4
+   --> src/bin/miri.rs:537:4
     |
-464 | fn init_late_loggers(early_dcx: &EarlyDiagCtxt, tcx: TyCtxt<'_>) {
+537 | fn init_late_loggers(early_dcx: &EarlyDiagCtxt, tcx: TyCtxt<'_>) {
     |    ^^^^^^^^^^^^^^^^^
 
 warning: unused imports: `CrateType` and `OptLevel`
@@ -73,10 +85,16 @@ warning: field `miri_config` is never read
    |
    = note: `#[warn(dead_code)]` on by default
 
+warning: function `mir_body_of_func_operand` is never used
+  --> src/bin/miri.rs:58:4
+   |
+58 | fn mir_body_of_func_operand<'tcx>(
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^
+
 warning: function `init_late_loggers` is never used
-   --> src/bin/miri.rs:464:4
+   --> src/bin/miri.rs:537:4
     |
-464 | fn init_late_loggers(early_dcx: &EarlyDiagCtxt, tcx: TyCtxt<'_>) {
+537 | fn init_late_loggers(early_dcx: &EarlyDiagCtxt, tcx: TyCtxt<'_>) {
     |    ^^^^^^^^^^^^^^^^^
 
 warning: field `p2` is never read
@@ -96,44 +114,385 @@ Public functions: [DefId(0:6 ~ simple[3ce3]::do_something)]
 Basic Block bb0:
 [Rvalue] Aggregate(Adt(DefId(0:3 ~ simple[3ce3]::TwoMembers), 0, [], None, None), [const 42_isize, const 43_isize])
 Statement: Assign((_1, TwoMembers { p1: const 42_isize, p2: const 43_isize }))
-[RPIL-EMIT] BIND place(_2,2), place(_1,1)
 [Rvalue] Aggregate(Adt(DefId(0:3 ~ simple[3ce3]::TwoMembers), 0, [], None, None), [const 44_isize, (_1.1: isize)])
 Statement: Assign((_2, TwoMembers { p1: const 44_isize, p2: (_1.1: isize) }))
-[RPIL-EMIT] MOVE _2
-[RPIL-EMIT] BIND _4, _2
 [Rvalue] Use(move _2)
 Statement: Assign((_4, move _2))
-[RPIL-EMIT] MOVE _4
-[RPIL-EMIT] BIND place(_3,1), _4
 [Rvalue] Aggregate(Adt(DefId(2:36549 ~ core[b5cd]::option::Option), 1, [TwoMembers], None, None), [move _4])
 Statement: Assign((_3, std::option::Option::<TwoMembers>::Some(move _4)))
-[RPIL-EMIT] MOVE _3
-[RPIL-EMIT] BIND _6, _3
 [Rvalue] Use(move _3)
 Statement: Assign((_6, move _3))
-[RPIL-EMIT] MOVE _6
-[RPIL-EMIT] BIND place(_5,1), _6
 [Rvalue] Aggregate(Adt(DefId(2:36549 ~ core[b5cd]::option::Option), 1, [std::option::Option<TwoMembers>], None, None), [move _6])
 Statement: Assign((_5, std::option::Option::<std::option::Option<TwoMembers>>::Some(move _6)))
-[RPIL-EMIT] MOVE _5
-[RPIL-EMIT] BIND _9, _5
 [Rvalue] Use(move _5)
 Statement: Assign((_9, move _5))
-[FunCall] `std::option::Option::<T>::unwrap`
-Statement: TermAssign((_8, Some(Body { basic_blocks: BasicBlocks { basic_blocks: [BasicBlockData { statements: [Retag([fn entry] _1), PlaceMention(_1), _2 = discriminant(_1)], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:961:9: 961:19 (#0), scope: scope[0] }, kind: switchInt(move _2) -> [0: bb2, 1: bb3, otherwise: bb1] }), is_cleanup: false }, BasicBlockData { statements: [], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:961:15: 961:19 (#0), scope: scope[0] }, kind: unreachable }), is_cleanup: false }, BasicBlockData { statements: [StorageLive(_4)], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:963:21: 963:36 (#0), scope: scope[0] }, kind: _4 = std::option::unwrap_failed() -> bb4 }), is_cleanup: false }, BasicBlockData { statements: [StorageLive(_3), _3 = move ((_1 as Some).0: T), Retag(_3), _0 = move _3, Retag(_0), StorageDead(_3)], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:965:6: 965:6 (#0), scope: scope[0] }, kind: return }), is_cleanup: false }, BasicBlockData { statements: [], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:5: 965:6 (#0), scope: scope[0] }, kind: resume }), is_cleanup: true }], cache: Cache { predecessors: OnceLock(<uninit>), switch_sources: OnceLock(<uninit>), is_cyclic: OnceLock(<uninit>), reverse_postorder: OnceLock(<uninit>), dominators: OnceLock(<uninit>) } }, phase: Runtime(Optimized), pass_count: 1, source: MirSource { instance: Item(DefId(2:9362 ~ core[b5cd]::option::{impl#0}::unwrap)), promoted: None }, source_scopes: [SourceScopeData { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:5: 965:6 (#0), parent_scope: None, inlined: None, inlined_parent_scope: None, local_data: Clear }, SourceScopeData { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:962:13: 962:29 (#0), parent_scope: Some(scope[0]), inlined: None, inlined_parent_scope: None, local_data: Clear }], coroutine: None, local_decls: [LocalDecl { mutability: Mut, local_info: Clear, ty: T/#0, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:34: 960:35 (#0), scope: scope[0] } }, LocalDecl { mutability: Not, local_info: Clear, ty: std::option::Option<T/#0>, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:25: 960:29 (#0), scope: scope[0] } }, LocalDecl { mutability: Mut, local_info: Clear, ty: isize, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:962:13: 962:22 (#0), scope: scope[0] } }, LocalDecl { mutability: Not, local_info: Clear, ty: T/#0, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:962:18: 962:21 (#0), scope: scope[0] } }, LocalDecl { mutability: Mut, local_info: Clear, ty: !, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:963:21: 963:36 (#0), scope: scope[0] } }], user_type_annotations: [], arg_count: 1, spread_arg: None, var_debug_info: [self => _1, val => _3], span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:5: 965:6 (#0), required_consts: [], mentioned_items: [Spanned { node: Fn(FnDef(DefId(2:9431 ~ core[b5cd]::option::unwrap_failed), [])), span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:963:21: 963:36 (#0) }], is_polymorphic: true, injection_phase: None, tainted_by_errors: None, coverage_info_hi: None, function_coverage_info: None })[move _9]))
+[MIR] Body for function: std::option::Option::<T>::unwrap
+Basic Block bb0:
+Statement: Assign((_2, discriminant(_1)))
+Next: [bb2, bb3, bb1]
+
+Basic Block bb1:
+Next: !
+
+Basic Block bb2:
+[MIR] Body for function: std::option::unwrap_failed
+Basic Block bb0:
+[MIR] Body for function: core::panicking::panic
+Basic Block bb0:
+[Rvalue] Use(_1)
+Statement: Assign((_7, _1))
+[AggregateKind] _6 <- Array[move _7]
+[Rvalue] Aggregate(Array(&'{erased} str), [move _7])
+Statement: Assign((_6, [move _7]))
+Statement: Assign((_5, &_6))
+Statement: Assign((_4, &(*_5)))
+[MIR] Body for function: std::fmt::Arguments::<'a>::new_const
+Basic Block bb0:
+[Rvalue] Use(const std::fmt::Arguments::<'_>::new_const::<N>::{constant#1})
+Statement: Assign((_2, const std::fmt::Arguments::<'_>::new_const::<N>::{constant#1}))
+Statement: Assign((_4, &(*_1)))
+[Rvalue] Cast(move _4)
+Statement: Assign((_3, move _4 as &[&str] (PointerCoercion(Unsize))))
+[Rvalue] Aggregate(Adt(DefId(2:36549 ~ core[b5cd]::option::Option), 0, [&'{erased} [core::fmt::rt::Placeholder]], None, None), [])
+Statement: Assign((_5, std::option::Option::<&[core::fmt::rt::Placeholder]>::None))
+[Rvalue] Use(const std::fmt::Arguments::<'_>::new_const::<N>::promoted[0])
+Statement: Assign((_10, const std::fmt::Arguments::<'_>::new_const::<N>::promoted[0]))
+Statement: Assign((_8, &(*_10)))
+Statement: Assign((_7, &(*_8)))
+[Rvalue] Cast(move _7)
+Statement: Assign((_6, move _7 as &[core::fmt::rt::Argument<'_>] (PointerCoercion(Unsize))))
+[Rvalue] Aggregate(Adt(DefId(2:37802 ~ core[b5cd]::fmt::Arguments), 0, ['{erased}], None, None), [move _3, move _5, move _6])
+Statement: Assign((_0, std::fmt::Arguments::<'_> { pieces: move _3, fmt: move _5, args: move _6 }))
+Next: return
+
+[RPIL] FunCall Result: [
+    "BORROW _4, (*_1)",
+    "MOVE _4",
+    "BIND _3, _4",
+    "BORROW _8, (*_10)",
+    "BORROW _7, (*_8)",
+    "MOVE _7",
+    "BIND _6, _7",
+    "MOVE _3",
+    "BIND place(_0,1), _3",
+    "MOVE _5",
+    "BIND place(_0,2), _5",
+    "MOVE _6",
+    "BIND place(_0,3), _6",
+]
+Statement: TermAssign((_3, std::fmt::Arguments::<'_>::new_const::<1>[move _4]))
 Next: Some(bb1)
 
 Basic Block bb1:
-[FunCall] `std::option::Option::<T>::unwrap`
-Statement: TermAssign((_7, Some(Body { basic_blocks: BasicBlocks { basic_blocks: [BasicBlockData { statements: [Retag([fn entry] _1), PlaceMention(_1), _2 = discriminant(_1)], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:961:9: 961:19 (#0), scope: scope[0] }, kind: switchInt(move _2) -> [0: bb2, 1: bb3, otherwise: bb1] }), is_cleanup: false }, BasicBlockData { statements: [], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:961:15: 961:19 (#0), scope: scope[0] }, kind: unreachable }), is_cleanup: false }, BasicBlockData { statements: [StorageLive(_4)], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:963:21: 963:36 (#0), scope: scope[0] }, kind: _4 = std::option::unwrap_failed() -> bb4 }), is_cleanup: false }, BasicBlockData { statements: [StorageLive(_3), _3 = move ((_1 as Some).0: T), Retag(_3), _0 = move _3, Retag(_0), StorageDead(_3)], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:965:6: 965:6 (#0), scope: scope[0] }, kind: return }), is_cleanup: false }, BasicBlockData { statements: [], terminator: Some(Terminator { source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:5: 965:6 (#0), scope: scope[0] }, kind: resume }), is_cleanup: true }], cache: Cache { predecessors: OnceLock(<uninit>), switch_sources: OnceLock(<uninit>), is_cyclic: OnceLock(<uninit>), reverse_postorder: OnceLock(<uninit>), dominators: OnceLock(<uninit>) } }, phase: Runtime(Optimized), pass_count: 1, source: MirSource { instance: Item(DefId(2:9362 ~ core[b5cd]::option::{impl#0}::unwrap)), promoted: None }, source_scopes: [SourceScopeData { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:5: 965:6 (#0), parent_scope: None, inlined: None, inlined_parent_scope: None, local_data: Clear }, SourceScopeData { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:962:13: 962:29 (#0), parent_scope: Some(scope[0]), inlined: None, inlined_parent_scope: None, local_data: Clear }], coroutine: None, local_decls: [LocalDecl { mutability: Mut, local_info: Clear, ty: T/#0, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:34: 960:35 (#0), scope: scope[0] } }, LocalDecl { mutability: Not, local_info: Clear, ty: std::option::Option<T/#0>, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:25: 960:29 (#0), scope: scope[0] } }, LocalDecl { mutability: Mut, local_info: Clear, ty: isize, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:962:13: 962:22 (#0), scope: scope[0] } }, LocalDecl { mutability: Not, local_info: Clear, ty: T/#0, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:962:18: 962:21 (#0), scope: scope[0] } }, LocalDecl { mutability: Mut, local_info: Clear, ty: !, user_ty: None, source_info: SourceInfo { span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:963:21: 963:36 (#0), scope: scope[0] } }], user_type_annotations: [], arg_count: 1, spread_arg: None, var_debug_info: [self => _1, val => _3], span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:960:5: 965:6 (#0), required_consts: [], mentioned_items: [Spanned { node: Fn(FnDef(DefId(2:9431 ~ core[b5cd]::option::unwrap_failed), [])), span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:963:21: 963:36 (#0) }], is_polymorphic: true, injection_phase: None, tainted_by_errors: None, coverage_info_hi: None, function_coverage_info: None })[move _8]))
+[MIR] Body for function: std::rt::panic_fmt
+Basic Block bb0:
+[Rvalue] Use(const false)
+Statement: Assign((_3, const false))
+Next: [bb2, bb1]
+
+Basic Block bb1:
+[MIR] Body for function: std::intrinsics::abort
+MIR not available for `DefId(2:1681 ~ core[b5cd]::intrinsics::{extern#0}::abort)`
+[RPIL] FunCall Result: []
+Statement: TermAssign((_4, std::intrinsics::abort[]))
+Next: None
+
+Basic Block bb2:
+[Rvalue] Use(const ())
+Statement: Assign((_2, const ()))
+[Rvalue] Use(_1)
+Statement: Assign((_6, _1))
+[MIR] Body for function: std::panic::Location::<'a>::caller
+Basic Block bb0:
+[MIR] Body for function: std::intrinsics::caller_location
+MIR not available for `DefId(2:1706 ~ core[b5cd]::intrinsics::{extern#1}::caller_location)`
+[RPIL] FunCall Result: []
+Statement: TermAssign((_0, std::intrinsics::caller_location[]))
+Next: Some(bb1)
+
+Basic Block bb1:
+Next: return
+
+[RPIL] FunCall Result: []
+Statement: TermAssign((_8, std::panic::Location::<'_>::caller[]))
+Next: Some(bb3)
+
+Basic Block bb3:
+Statement: Assign((_7, &(*_8)))
+[MIR] Body for function: core::panic::panic_info::PanicInfo::<'a>::new
+Basic Block bb0:
+Statement: Assign((_5, &(*_2)))
+[Rvalue] Use(_1)
+Statement: Assign((_6, _1))
+[Rvalue] Use(_3)
+Statement: Assign((_7, _3))
+[Rvalue] Use(_4)
+Statement: Assign((_8, _4))
+[Rvalue] Aggregate(Adt(DefId(2:36633 ~ core[b5cd]::panic::panic_info::PanicInfo), 0, ['{erased}], None, None), [move _6, move _5, move _7, move _8])
+Statement: Assign((_0, core::panic::panic_info::PanicInfo::<'_> { message: move _6, location: move _5, can_unwind: move _7, force_no_backtrace: move _8 }))
+Next: return
+
+[RPIL] FunCall Result: [
+    "BORROW _5, (*_2)",
+    "BIND _6, _1",
+    "BIND _7, _3",
+    "BIND _8, _4",
+    "MOVE _6",
+    "BIND place(_0,1), _6",
+    "MOVE _5",
+    "BIND place(_0,2), _5",
+    "MOVE _7",
+    "BIND place(_0,3), _7",
+    "MOVE _8",
+    "BIND place(_0,4), _8",
+]
+Statement: TermAssign((_5, core::panic::panic_info::PanicInfo::<'_>::new[move _6, move _7, const true, const false]))
+Next: Some(bb4)
+
+Basic Block bb4:
+Statement: Assign((_10, &_5))
+Statement: Assign((_9, &(*_10)))
+[MIR] Body for function: std::rt::panic_fmt::panic_impl
+MIR not available for `DefId(2:9711 ~ core[b5cd]::panicking::panic_fmt::{extern#0}::panic_impl)`
+[RPIL] FunCall Result: []
+Statement: TermAssign((_0, std::rt::panic_fmt::panic_impl[move _9]))
+Next: None
+
+[RPIL] FunCall Result: [
+    "BIND _6, _1",
+    "BORROW _7, (*_8)",
+    "BORROW _10, _5",
+    "BORROW _9, (*_10)",
+]
+Statement: TermAssign((_2, std::rt::panic_fmt[move _3]))
+Next: None
+
+[RPIL] FunCall Result: [
+    "BIND _7, _1",
+    "MOVE _7",
+    "BIND place(_6,1), _7",
+    "BORROW _5, _6",
+    "BORROW _4, (*_5)",
+]
+Statement: TermAssign((_0, core::panicking::panic[const "called `Option::unwrap()` on a `None` value"]))
+Next: None
+
+[RPIL] FunCall Result: []
+Statement: TermAssign((_4, std::option::unwrap_failed[]))
+Next: None
+
+Basic Block bb3:
+[Rvalue] Use(move ((_1 as Some).0: T))
+Statement: Assign((_3, move ((_1 as Some).0: T)))
+[Rvalue] Use(move _3)
+Statement: Assign((_0, move _3))
+Next: return
+
+Basic Block bb4:
+Next: !
+
+[RPIL] FunCall Result: [
+    "MOVE ((_1 as Some).0: T)",
+    "BIND _3, ((_1 as Some).0: T)",
+    "MOVE _3",
+    "BIND _0, _3",
+]
+Statement: TermAssign((_8, std::option::Option::<std::option::Option<TwoMembers>>::unwrap[move _9]))
+Next: Some(bb1)
+
+Basic Block bb1:
+[MIR] Body for function: std::option::Option::<T>::unwrap
+Basic Block bb0:
+Statement: Assign((_2, discriminant(_1)))
+Next: [bb2, bb3, bb1]
+
+Basic Block bb1:
+Next: !
+
+Basic Block bb2:
+[MIR] Body for function: std::option::unwrap_failed
+Basic Block bb0:
+[MIR] Body for function: core::panicking::panic
+Basic Block bb0:
+[Rvalue] Use(_1)
+Statement: Assign((_7, _1))
+[AggregateKind] _6 <- Array[move _7]
+[Rvalue] Aggregate(Array(&'{erased} str), [move _7])
+Statement: Assign((_6, [move _7]))
+Statement: Assign((_5, &_6))
+Statement: Assign((_4, &(*_5)))
+[MIR] Body for function: std::fmt::Arguments::<'a>::new_const
+Basic Block bb0:
+[Rvalue] Use(const std::fmt::Arguments::<'_>::new_const::<N>::{constant#1})
+Statement: Assign((_2, const std::fmt::Arguments::<'_>::new_const::<N>::{constant#1}))
+Statement: Assign((_4, &(*_1)))
+[Rvalue] Cast(move _4)
+Statement: Assign((_3, move _4 as &[&str] (PointerCoercion(Unsize))))
+[Rvalue] Aggregate(Adt(DefId(2:36549 ~ core[b5cd]::option::Option), 0, [&'{erased} [core::fmt::rt::Placeholder]], None, None), [])
+Statement: Assign((_5, std::option::Option::<&[core::fmt::rt::Placeholder]>::None))
+[Rvalue] Use(const std::fmt::Arguments::<'_>::new_const::<N>::promoted[0])
+Statement: Assign((_10, const std::fmt::Arguments::<'_>::new_const::<N>::promoted[0]))
+Statement: Assign((_8, &(*_10)))
+Statement: Assign((_7, &(*_8)))
+[Rvalue] Cast(move _7)
+Statement: Assign((_6, move _7 as &[core::fmt::rt::Argument<'_>] (PointerCoercion(Unsize))))
+[Rvalue] Aggregate(Adt(DefId(2:37802 ~ core[b5cd]::fmt::Arguments), 0, ['{erased}], None, None), [move _3, move _5, move _6])
+Statement: Assign((_0, std::fmt::Arguments::<'_> { pieces: move _3, fmt: move _5, args: move _6 }))
+Next: return
+
+[RPIL] FunCall Result: [
+    "BORROW _4, (*_1)",
+    "MOVE _4",
+    "BIND _3, _4",
+    "BORROW _8, (*_10)",
+    "BORROW _7, (*_8)",
+    "MOVE _7",
+    "BIND _6, _7",
+    "MOVE _3",
+    "BIND place(_0,1), _3",
+    "MOVE _5",
+    "BIND place(_0,2), _5",
+    "MOVE _6",
+    "BIND place(_0,3), _6",
+]
+Statement: TermAssign((_3, std::fmt::Arguments::<'_>::new_const::<1>[move _4]))
+Next: Some(bb1)
+
+Basic Block bb1:
+[MIR] Body for function: std::rt::panic_fmt
+Basic Block bb0:
+[Rvalue] Use(const false)
+Statement: Assign((_3, const false))
+Next: [bb2, bb1]
+
+Basic Block bb1:
+[MIR] Body for function: std::intrinsics::abort
+MIR not available for `DefId(2:1681 ~ core[b5cd]::intrinsics::{extern#0}::abort)`
+[RPIL] FunCall Result: []
+Statement: TermAssign((_4, std::intrinsics::abort[]))
+Next: None
+
+Basic Block bb2:
+[Rvalue] Use(const ())
+Statement: Assign((_2, const ()))
+[Rvalue] Use(_1)
+Statement: Assign((_6, _1))
+[MIR] Body for function: std::panic::Location::<'a>::caller
+Basic Block bb0:
+[MIR] Body for function: std::intrinsics::caller_location
+MIR not available for `DefId(2:1706 ~ core[b5cd]::intrinsics::{extern#1}::caller_location)`
+[RPIL] FunCall Result: []
+Statement: TermAssign((_0, std::intrinsics::caller_location[]))
+Next: Some(bb1)
+
+Basic Block bb1:
+Next: return
+
+[RPIL] FunCall Result: []
+Statement: TermAssign((_8, std::panic::Location::<'_>::caller[]))
+Next: Some(bb3)
+
+Basic Block bb3:
+Statement: Assign((_7, &(*_8)))
+[MIR] Body for function: core::panic::panic_info::PanicInfo::<'a>::new
+Basic Block bb0:
+Statement: Assign((_5, &(*_2)))
+[Rvalue] Use(_1)
+Statement: Assign((_6, _1))
+[Rvalue] Use(_3)
+Statement: Assign((_7, _3))
+[Rvalue] Use(_4)
+Statement: Assign((_8, _4))
+[Rvalue] Aggregate(Adt(DefId(2:36633 ~ core[b5cd]::panic::panic_info::PanicInfo), 0, ['{erased}], None, None), [move _6, move _5, move _7, move _8])
+Statement: Assign((_0, core::panic::panic_info::PanicInfo::<'_> { message: move _6, location: move _5, can_unwind: move _7, force_no_backtrace: move _8 }))
+Next: return
+
+[RPIL] FunCall Result: [
+    "BORROW _5, (*_2)",
+    "BIND _6, _1",
+    "BIND _7, _3",
+    "BIND _8, _4",
+    "MOVE _6",
+    "BIND place(_0,1), _6",
+    "MOVE _5",
+    "BIND place(_0,2), _5",
+    "MOVE _7",
+    "BIND place(_0,3), _7",
+    "MOVE _8",
+    "BIND place(_0,4), _8",
+]
+Statement: TermAssign((_5, core::panic::panic_info::PanicInfo::<'_>::new[move _6, move _7, const true, const false]))
+Next: Some(bb4)
+
+Basic Block bb4:
+Statement: Assign((_10, &_5))
+Statement: Assign((_9, &(*_10)))
+[MIR] Body for function: std::rt::panic_fmt::panic_impl
+MIR not available for `DefId(2:9711 ~ core[b5cd]::panicking::panic_fmt::{extern#0}::panic_impl)`
+[RPIL] FunCall Result: []
+Statement: TermAssign((_0, std::rt::panic_fmt::panic_impl[move _9]))
+Next: None
+
+[RPIL] FunCall Result: [
+    "BIND _6, _1",
+    "BORROW _7, (*_8)",
+    "BORROW _10, _5",
+    "BORROW _9, (*_10)",
+]
+Statement: TermAssign((_2, std::rt::panic_fmt[move _3]))
+Next: None
+
+[RPIL] FunCall Result: [
+    "BIND _7, _1",
+    "MOVE _7",
+    "BIND place(_6,1), _7",
+    "BORROW _5, _6",
+    "BORROW _4, (*_5)",
+]
+Statement: TermAssign((_0, core::panicking::panic[const "called `Option::unwrap()` on a `None` value"]))
+Next: None
+
+[RPIL] FunCall Result: []
+Statement: TermAssign((_4, std::option::unwrap_failed[]))
+Next: None
+
+Basic Block bb3:
+[Rvalue] Use(move ((_1 as Some).0: T))
+Statement: Assign((_3, move ((_1 as Some).0: T)))
+[Rvalue] Use(move _3)
+Statement: Assign((_0, move _3))
+Next: return
+
+Basic Block bb4:
+Next: !
+
+[RPIL] FunCall Result: [
+    "MOVE ((_1 as Some).0: T)",
+    "BIND _3, ((_1 as Some).0: T)",
+    "MOVE _3",
+    "BIND _0, _3",
+]
+Statement: TermAssign((_7, std::option::Option::<TwoMembers>::unwrap[move _8]))
 Next: Some(bb2)
 
 Basic Block bb2:
-[RPIL-EMIT] BIND _0, place(_7,0)
 [Rvalue] Use((_7.0: isize))
 Statement: Assign((_0, (_7.0: isize)))
 Next: return
 
-
+[RPIL] Result: [
+    "BIND place(_2,2), place(_1,1)",
+    "MOVE _2",
+    "BIND _4, _2",
+    "MOVE _4",
+    "BIND place(_3,1), _4",
+    "MOVE _3",
+    "BIND _6, _3",
+    "MOVE _6",
+    "BIND place(_5,1), _6",
+    "MOVE _5",
+    "BIND _9, _5",
+    "BIND _0, place(_7,0)",
+]
 warning: 1 warning emitted
 
