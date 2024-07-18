@@ -1,251 +1,9 @@
-$ rustfmt +miri --edition=2021 --config-path /Users/dnomkr/src/mir2rpil/rustfmt.toml --unstable-features --skip-children ...
-$ cargo +miri clippy --manifest-path /Users/dnomkr/src/mir2rpil/Cargo.toml --all-targets
-warning: unused imports: `FieldIdx` and `VariantIdx`
-  --> src/bin/miri.rs:31:25
-   |
-31 | use rustc_target::abi::{FieldIdx, VariantIdx};
-   |                         ^^^^^^^^  ^^^^^^^^^^
-   |
-   = note: `#[warn(unused_imports)]` on by default
+Public functions: [
+    DefId(0:24 ~ simple[3ce3]::do_something),
+]
 
-warning: unused imports: `CrateType` and `OptLevel`
-  --> src/bin/miri.rs:49:29
-   |
-49 | use rustc_session::config::{CrateType, ErrorOutputType, OptLevel};
-   |                             ^^^^^^^^^                   ^^^^^^^^
-
-warning: unused variable: `tcx`
-   --> src/bin/miri.rs:278:5
-    |
-278 |     tcx: TyCtxt<'tcx>,
-    |     ^^^ help: if this is intentional, prefix it with an underscore: `_tcx`
-    |
-    = note: `#[warn(unused_variables)]` on by default
-
-warning: unused variable: `trcx`
-   --> src/bin/miri.rs:353:5
-    |
-353 |     trcx: &mut TranslationCtxt,
-    |     ^^^^ help: if this is intentional, prefix it with an underscore: `_trcx`
-
-warning: field `miri_config` is never read
-  --> src/bin/miri.rs:56:5
-   |
-55 | struct MiriCompilerCalls {
-   |        ----------------- field in this struct
-56 |     miri_config: miri::MiriConfig,
-   |     ^^^^^^^^^^^
-   |
-   = note: `#[warn(dead_code)]` on by default
-
-warning: variant `ExternPlace` is never constructed
-  --> src/bin/miri.rs:62:5
-   |
-59 | enum RpilOp {
-   |      ------ variant in this enum
-...
-62 |     ExternPlace(Box<RpilOp>),
-   |     ^^^^^^^^^^^
-
-warning: variants `BorrowMut`, `DerefMove`, and `DerefPin` are never constructed
-  --> src/bin/miri.rs:81:5
-   |
-78 | enum RpilInst {
-   |      -------- variants in this enum
-...
-81 |     BorrowMut(RpilOp, RpilOp),
-   |     ^^^^^^^^^
-82 |     Move(RpilOp),
-83 |     DerefMove(RpilOp),
-   |     ^^^^^^^^^
-84 |     DerefPin(RpilOp),
-   |     ^^^^^^^^
-
-warning: function `init_late_loggers` is never used
-   --> src/bin/miri.rs:640:4
-    |
-640 | fn init_late_loggers(early_dcx: &EarlyDiagCtxt, tcx: TyCtxt<'_>) {
-    |    ^^^^^^^^^^^^^^^^^
-
-warning: `miri` (bin "miri") generated 8 warnings (run `cargo clippy --fix --bin "miri"` to apply 2 suggestions)
-warning: `miri` (bin "miri" test) generated 8 warnings (8 duplicates)
-    Finished `dev` profile [optimized + debuginfo] target(s) in 0.04s
-$ cargo +miri clippy --manifest-path /Users/dnomkr/src/mir2rpil/cargo-miri/Cargo.toml --all-targets
-    Finished `dev` profile [optimized + debuginfo] target(s) in 0.01s
-$ cargo +miri clippy --manifest-path /Users/dnomkr/src/mir2rpil/miri-script/Cargo.toml --all-targets
-    Finished `dev` profile [optimized + debuginfo] target(s) in 0.01s
-warning: unused imports: `FieldIdx` and `VariantIdx`
-  --> src/bin/miri.rs:31:25
-   |
-31 | use rustc_target::abi::{FieldIdx, VariantIdx};
-   |                         ^^^^^^^^  ^^^^^^^^^^
-   |
-   = note: `#[warn(unused_imports)]` on by default
-
-warning: unused imports: `CrateType` and `OptLevel`
-  --> src/bin/miri.rs:49:29
-   |
-49 | use rustc_session::config::{CrateType, ErrorOutputType, OptLevel};
-   |                             ^^^^^^^^^                   ^^^^^^^^
-
-warning: unused variable: `tcx`
-   --> src/bin/miri.rs:278:5
-    |
-278 |     tcx: TyCtxt<'tcx>,
-    |     ^^^ help: if this is intentional, prefix it with an underscore: `_tcx`
-    |
-    = note: `#[warn(unused_variables)]` on by default
-
-warning: unused variable: `trcx`
-   --> src/bin/miri.rs:353:5
-    |
-353 |     trcx: &mut TranslationCtxt,
-    |     ^^^^ help: if this is intentional, prefix it with an underscore: `_trcx`
-
-warning: field `miri_config` is never read
-  --> src/bin/miri.rs:56:5
-   |
-55 | struct MiriCompilerCalls {
-   |        ----------------- field in this struct
-56 |     miri_config: miri::MiriConfig,
-   |     ^^^^^^^^^^^
-   |
-   = note: `#[warn(dead_code)]` on by default
-
-warning: variant `ExternPlace` is never constructed
-  --> src/bin/miri.rs:62:5
-   |
-59 | enum RpilOp {
-   |      ------ variant in this enum
-...
-62 |     ExternPlace(Box<RpilOp>),
-   |     ^^^^^^^^^^^
-
-warning: variants `BorrowMut`, `DerefMove`, and `DerefPin` are never constructed
-  --> src/bin/miri.rs:81:5
-   |
-78 | enum RpilInst {
-   |      -------- variants in this enum
-...
-81 |     BorrowMut(RpilOp, RpilOp),
-   |     ^^^^^^^^^
-82 |     Move(RpilOp),
-83 |     DerefMove(RpilOp),
-   |     ^^^^^^^^^
-84 |     DerefPin(RpilOp),
-   |     ^^^^^^^^
-
-warning: function `init_late_loggers` is never used
-   --> src/bin/miri.rs:640:4
-    |
-640 | fn init_late_loggers(early_dcx: &EarlyDiagCtxt, tcx: TyCtxt<'_>) {
-    |    ^^^^^^^^^^^^^^^^^
-
-warning: unused imports: `FieldIdx` and `VariantIdx`
-  --> src/bin/miri.rs:31:25
-   |
-31 | use rustc_target::abi::{FieldIdx, VariantIdx};
-   |                         ^^^^^^^^  ^^^^^^^^^^
-   |
-   = note: `#[warn(unused_imports)]` on by default
-
-warning: unused imports: `CrateType` and `OptLevel`
-  --> src/bin/miri.rs:49:29
-   |
-49 | use rustc_session::config::{CrateType, ErrorOutputType, OptLevel};
-   |                             ^^^^^^^^^                   ^^^^^^^^
-
-warning: unused variable: `tcx`
-   --> src/bin/miri.rs:278:5
-    |
-278 |     tcx: TyCtxt<'tcx>,
-    |     ^^^ help: if this is intentional, prefix it with an underscore: `_tcx`
-    |
-    = note: `#[warn(unused_variables)]` on by default
-
-warning: unused variable: `trcx`
-   --> src/bin/miri.rs:353:5
-    |
-353 |     trcx: &mut TranslationCtxt,
-    |     ^^^^ help: if this is intentional, prefix it with an underscore: `_trcx`
-
-warning: field `miri_config` is never read
-  --> src/bin/miri.rs:56:5
-   |
-55 | struct MiriCompilerCalls {
-   |        ----------------- field in this struct
-56 |     miri_config: miri::MiriConfig,
-   |     ^^^^^^^^^^^
-   |
-   = note: `#[warn(dead_code)]` on by default
-
-warning: variant `ExternPlace` is never constructed
-  --> src/bin/miri.rs:62:5
-   |
-59 | enum RpilOp {
-   |      ------ variant in this enum
-...
-62 |     ExternPlace(Box<RpilOp>),
-   |     ^^^^^^^^^^^
-
-warning: variants `BorrowMut`, `DerefMove`, and `DerefPin` are never constructed
-  --> src/bin/miri.rs:81:5
-   |
-78 | enum RpilInst {
-   |      -------- variants in this enum
-...
-81 |     BorrowMut(RpilOp, RpilOp),
-   |     ^^^^^^^^^
-82 |     Move(RpilOp),
-83 |     DerefMove(RpilOp),
-   |     ^^^^^^^^^
-84 |     DerefPin(RpilOp),
-   |     ^^^^^^^^
-
-warning: function `init_late_loggers` is never used
-   --> src/bin/miri.rs:640:4
-    |
-640 | fn init_late_loggers(early_dcx: &EarlyDiagCtxt, tcx: TyCtxt<'_>) {
-    |    ^^^^^^^^^^^^^^^^^
-
-warning: field `p2` is never read
- --> playground/simple.rs:7:5
-  |
-5 | struct TwoMembers {
-  |        ---------- field in this struct
-6 |     p1: isize,
-7 |     p2: isize,
-  |     ^^
-  |
-  = note: `#[warn(dead_code)]` on by default
-
-warning: fields `0`, `1`, `2`, and `3` are never read
-  --> playground/simple.rs:13:14
-   |
-13 |     Variant2(u8, u8, u8, u8, Option<TwoMembers>),
-   |     -------- ^^  ^^  ^^  ^^
-   |     |
-   |     fields in this variant
-   |
-help: consider changing the fields to be of unit type to suppress this warning while preserving the field numbering, or remove the fields
-   |
-13 |     Variant2((), (), (), (), Option<TwoMembers>),
-   |              ~~  ~~  ~~  ~~
-
-warning: variants `Variant0` and `Variant1` are never constructed
-  --> playground/simple.rs:11:5
-   |
-10 | enum ThreeVariants {
-   |      ------------- variants in this enum
-11 |     Variant0(i8, i8, i8),
-   |     ^^^^^^^^
-12 |     Variant1(i8, i8),
-   |     ^^^^^^^^
-
-Public functions: [DefId(0:24 ~ simple[3ce3]::do_something)]
-
-[MIR] Body for function: do_something
-Basic Block bb0:
+[MIR] `do_something` 24:
+bb0 of `do_something` 24:
 Statement: Assign((_1, TwoMembers { p1: const 42_isize, p2: const 43_isize }))
 [Rvalue] Aggregate(Adt(DefId(0:4 ~ simple[3ce3]::TwoMembers), 0, [], None, None), [const 42_isize, const 43_isize])
 [AggregateKind] Adt(variant_idx=0)
@@ -276,11 +34,11 @@ Statement: Assign((_5, ThreeVariants::Variant2(const 45_u8, const 46_u8, const 4
 Statement: Assign((_9, discriminant(_5)))
 Terminator: SwitchInt(move _9)
 Next: [bb2, bb1]
-
-Basic Block bb1:
+---
+bb1 of `do_something` 24:
 Terminator: Assign((_11, core::panicking::panic[Spanned { node: const "internal error: entered unreachable code", span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panic.rs:137:34: 137:76 (#6) }]))
-[MIR] Body for function: core::panicking::panic
-Basic Block bb0:
+[MIR] `core::panicking::panic` 9717:
+bb0 of `core::panicking::panic` 9717:
 Statement: Assign((_7, _1))
 [Rvalue] Use(_1)
 [RPIL] BIND $7, $1
@@ -298,8 +56,8 @@ Statement: Assign((_4, &(*_5)))
 [Projection Result] ($5)*
 [RPIL] BORROW $4, ($5)*
 Terminator: Assign((_3, std::fmt::Arguments::<'_>::new_const::<1>[Spanned { node: move _4, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:148:41: 148:48 (#0) }]))
-[MIR] Body for function: std::fmt::Arguments::<'a>::new_const
-Basic Block bb0:
+[MIR] `std::fmt::Arguments::<'a>::new_const` 10777:
+bb0 of `std::fmt::Arguments::<'a>::new_const` 10777:
 Statement: Assign((_2, const std::fmt::Arguments::<'_>::new_const::<N>::{constant#1}))
 [Rvalue] Use(const std::fmt::Arguments::<'_>::new_const::<N>::{constant#1})
 Statement: Assign((_4, &(*_1)))
@@ -340,8 +98,8 @@ Statement: Assign((_0, std::fmt::Arguments::<'_> { pieces: move _3, fmt: move _5
 [RPIL] MOVE $6
 [RPIL] BIND $0.v0p2, $6
 Next: return
-
-[RPIL] DefId(2:10777 ~ core[b5cd]::fmt::{impl#2}::new_const):
+---
+[RPIL] `std::fmt::Arguments::<'a>::new_const` 10777:
     BORROW $4, ($1)*
     MOVE $4
     BIND $3, $4
@@ -356,56 +114,56 @@ Next: return
     MOVE $6
     BIND $0.v0p2, $6
 Next: Some(bb1)
-
-Basic Block bb1:
+---
+bb1 of `core::panicking::panic` 9717:
 Terminator: Assign((_2, std::rt::panic_fmt[Spanned { node: move _3, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:148:15: 148:49 (#0) }]))
-[MIR] Body for function: std::rt::panic_fmt
-Basic Block bb0:
+[MIR] `std::rt::panic_fmt` 9709:
+bb0 of `std::rt::panic_fmt` 9709:
 Statement: Assign((_3, const false))
 [Rvalue] Use(const false)
 Terminator: SwitchInt(move _3)
 Next: [bb2, bb1]
-
-Basic Block bb1:
+---
+bb1 of `std::rt::panic_fmt` 9709:
 Terminator: Assign((_4, std::intrinsics::abort[]))
-[MIR] Body for function: std::intrinsics::abort
-MIR not available for `DefId(2:1681 ~ core[b5cd]::intrinsics::{extern#0}::abort)`
-[RPIL] DefId(2:1681 ~ core[b5cd]::intrinsics::{extern#0}::abort):
+[MIR] `std::intrinsics::abort` 1681:
+    (empty)
+[RPIL] `std::intrinsics::abort` 1681:
     (empty)
 Next: None
-
-Basic Block bb2:
+---
+bb2 of `std::rt::panic_fmt` 9709:
 Statement: Assign((_2, const ()))
 [Rvalue] Use(const ())
 Statement: Assign((_6, _1))
 [Rvalue] Use(_1)
 [RPIL] BIND $6, $1
 Terminator: Assign((_8, std::panic::Location::<'_>::caller[]))
-[MIR] Body for function: std::panic::Location::<'a>::caller
-Basic Block bb0:
+[MIR] `std::panic::Location::<'a>::caller` 9571:
+bb0 of `std::panic::Location::<'a>::caller` 9571:
 Terminator: Assign((_0, std::intrinsics::caller_location[]))
-[MIR] Body for function: std::intrinsics::caller_location
-MIR not available for `DefId(2:1706 ~ core[b5cd]::intrinsics::{extern#1}::caller_location)`
-[RPIL] DefId(2:1706 ~ core[b5cd]::intrinsics::{extern#1}::caller_location):
+[MIR] `std::intrinsics::caller_location` 1706:
+    (empty)
+[RPIL] `std::intrinsics::caller_location` 1706:
     (empty)
 Next: Some(bb1)
-
-Basic Block bb1:
+---
+bb1 of `std::panic::Location::<'a>::caller` 9571:
 Next: return
-
-[RPIL] DefId(2:9571 ~ core[b5cd]::panic::location::{impl#0}::caller):
+---
+[RPIL] `std::panic::Location::<'a>::caller` 9571:
     (empty)
 Next: Some(bb3)
-
-Basic Block bb3:
+---
+bb3 of `std::rt::panic_fmt` 9709:
 Statement: Assign((_7, &(*_8)))
 [Rvalue] Ref((*_8))
 [Projection] _8, [Deref]
 [Projection Result] ($8)*
 [RPIL] BORROW $7, ($8)*
 Terminator: Assign((_5, core::panic::panic_info::PanicInfo::<'_>::new[Spanned { node: move _6, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:67:9: 67:12 (#0) }, Spanned { node: move _7, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:68:9: 68:27 (#0) }, Spanned { node: const true, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:69:26: 69:30 (#0) }, Spanned { node: const false, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:70:34: 70:39 (#0) }]))
-[MIR] Body for function: core::panic::panic_info::PanicInfo::<'a>::new
-Basic Block bb0:
+[MIR] `core::panic::panic_info::PanicInfo::<'a>::new` 9590:
+bb0 of `core::panic::panic_info::PanicInfo::<'a>::new` 9590:
 Statement: Assign((_5, &(*_2)))
 [Rvalue] Ref((*_2))
 [Projection] _2, [Deref]
@@ -432,8 +190,8 @@ Statement: Assign((_0, core::panic::panic_info::PanicInfo::<'_> { message: move 
 [RPIL] MOVE $8
 [RPIL] BIND $0.v0p3, $8
 Next: return
-
-[RPIL] DefId(2:9590 ~ core[b5cd]::panic::panic_info::{impl#0}::new):
+---
+[RPIL] `core::panic::panic_info::PanicInfo::<'a>::new` 9590:
     BORROW $5, ($2)*
     BIND $6, $1
     BIND $7, $3
@@ -447,8 +205,8 @@ Next: return
     MOVE $8
     BIND $0.v0p3, $8
 Next: Some(bb4)
-
-Basic Block bb4:
+---
+bb4 of `std::rt::panic_fmt` 9709:
 Statement: Assign((_10, &_5))
 [Rvalue] Ref(_5)
 [RPIL] BORROW $10, $5
@@ -458,28 +216,28 @@ Statement: Assign((_9, &(*_10)))
 [Projection Result] ($10)*
 [RPIL] BORROW $9, ($10)*
 Terminator: Assign((_0, std::rt::panic_fmt::panic_impl[Spanned { node: move _9, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:74:25: 74:28 (#0) }]))
-[MIR] Body for function: std::rt::panic_fmt::panic_impl
-MIR not available for `DefId(2:9711 ~ core[b5cd]::panicking::panic_fmt::{extern#0}::panic_impl)`
-[RPIL] DefId(2:9711 ~ core[b5cd]::panicking::panic_fmt::{extern#0}::panic_impl):
+[MIR] `std::rt::panic_fmt::panic_impl` 9711:
+    (empty)
+[RPIL] `std::rt::panic_fmt::panic_impl` 9711:
     (empty)
 Next: None
-
-[RPIL] DefId(2:9709 ~ core[b5cd]::panicking::panic_fmt):
+---
+[RPIL] `std::rt::panic_fmt` 9709:
     BIND $6, $1
     BORROW $7, ($8)*
     BORROW $10, $5
     BORROW $9, ($10)*
 Next: None
-
-[RPIL] DefId(2:9717 ~ core[b5cd]::panicking::panic):
+---
+[RPIL] `core::panicking::panic` 9717:
     BIND $7, $1
     MOVE $7
     BIND $6.p0, $7
     BORROW $5, $6
     BORROW $4, ($5)*
 Next: None
-
-Basic Block bb2:
+---
+bb2 of `do_something` 24:
 Statement: Assign((_10, move ((_5 as Variant2).4: std::option::Option<TwoMembers>)))
 [Rvalue] Use(move ((_5 as Variant2).4: std::option::Option<TwoMembers>))
 [Projection] _5, [Downcast(Some("Variant2"), 2), Field(4, std::option::Option<TwoMembers>)]
@@ -493,22 +251,22 @@ Statement: Assign((_8, move _10))
 [RPIL] MOVE $10
 [RPIL] BIND $8, $10
 Terminator: Assign((_7, std::option::Option::<TwoMembers>::unwrap[Spanned { node: move _8, span: playground/simple.rs:21:5: 24:6 (#0) }]))
-[MIR] Body for function: std::option::Option::<T>::unwrap
-Basic Block bb0:
+[MIR] `std::option::Option::<T>::unwrap` 9362:
+bb0 of `std::option::Option::<T>::unwrap` 9362:
 Statement: Assign((_2, discriminant(_1)))
 Terminator: SwitchInt(move _2)
 Next: [bb2, bb3, bb1]
-
-Basic Block bb1:
+---
+bb1 of `std::option::Option::<T>::unwrap` 9362:
 Next: !
-
-Basic Block bb2:
+---
+bb2 of `std::option::Option::<T>::unwrap` 9362:
 Terminator: Assign((_4, std::option::unwrap_failed[]))
-[MIR] Body for function: std::option::unwrap_failed
-Basic Block bb0:
+[MIR] `std::option::unwrap_failed` 9431:
+bb0 of `std::option::unwrap_failed` 9431:
 Terminator: Assign((_0, core::panicking::panic[Spanned { node: const "called `Option::unwrap()` on a `None` value", span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/option.rs:2013:11: 2013:56 (#0) }]))
-[MIR] Body for function: core::panicking::panic
-Basic Block bb0:
+[MIR] `core::panicking::panic` 9717:
+bb0 of `core::panicking::panic` 9717:
 Statement: Assign((_7, _1))
 [Rvalue] Use(_1)
 [RPIL] BIND $7, $1
@@ -526,8 +284,8 @@ Statement: Assign((_4, &(*_5)))
 [Projection Result] ($5)*
 [RPIL] BORROW $4, ($5)*
 Terminator: Assign((_3, std::fmt::Arguments::<'_>::new_const::<1>[Spanned { node: move _4, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:148:41: 148:48 (#0) }]))
-[MIR] Body for function: std::fmt::Arguments::<'a>::new_const
-Basic Block bb0:
+[MIR] `std::fmt::Arguments::<'a>::new_const` 10777:
+bb0 of `std::fmt::Arguments::<'a>::new_const` 10777:
 Statement: Assign((_2, const std::fmt::Arguments::<'_>::new_const::<N>::{constant#1}))
 [Rvalue] Use(const std::fmt::Arguments::<'_>::new_const::<N>::{constant#1})
 Statement: Assign((_4, &(*_1)))
@@ -568,8 +326,8 @@ Statement: Assign((_0, std::fmt::Arguments::<'_> { pieces: move _3, fmt: move _5
 [RPIL] MOVE $6
 [RPIL] BIND $0.v0p2, $6
 Next: return
-
-[RPIL] DefId(2:10777 ~ core[b5cd]::fmt::{impl#2}::new_const):
+---
+[RPIL] `std::fmt::Arguments::<'a>::new_const` 10777:
     BORROW $4, ($1)*
     MOVE $4
     BIND $3, $4
@@ -584,56 +342,56 @@ Next: return
     MOVE $6
     BIND $0.v0p2, $6
 Next: Some(bb1)
-
-Basic Block bb1:
+---
+bb1 of `core::panicking::panic` 9717:
 Terminator: Assign((_2, std::rt::panic_fmt[Spanned { node: move _3, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:148:15: 148:49 (#0) }]))
-[MIR] Body for function: std::rt::panic_fmt
-Basic Block bb0:
+[MIR] `std::rt::panic_fmt` 9709:
+bb0 of `std::rt::panic_fmt` 9709:
 Statement: Assign((_3, const false))
 [Rvalue] Use(const false)
 Terminator: SwitchInt(move _3)
 Next: [bb2, bb1]
-
-Basic Block bb1:
+---
+bb1 of `std::rt::panic_fmt` 9709:
 Terminator: Assign((_4, std::intrinsics::abort[]))
-[MIR] Body for function: std::intrinsics::abort
-MIR not available for `DefId(2:1681 ~ core[b5cd]::intrinsics::{extern#0}::abort)`
-[RPIL] DefId(2:1681 ~ core[b5cd]::intrinsics::{extern#0}::abort):
+[MIR] `std::intrinsics::abort` 1681:
+    (empty)
+[RPIL] `std::intrinsics::abort` 1681:
     (empty)
 Next: None
-
-Basic Block bb2:
+---
+bb2 of `std::rt::panic_fmt` 9709:
 Statement: Assign((_2, const ()))
 [Rvalue] Use(const ())
 Statement: Assign((_6, _1))
 [Rvalue] Use(_1)
 [RPIL] BIND $6, $1
 Terminator: Assign((_8, std::panic::Location::<'_>::caller[]))
-[MIR] Body for function: std::panic::Location::<'a>::caller
-Basic Block bb0:
+[MIR] `std::panic::Location::<'a>::caller` 9571:
+bb0 of `std::panic::Location::<'a>::caller` 9571:
 Terminator: Assign((_0, std::intrinsics::caller_location[]))
-[MIR] Body for function: std::intrinsics::caller_location
-MIR not available for `DefId(2:1706 ~ core[b5cd]::intrinsics::{extern#1}::caller_location)`
-[RPIL] DefId(2:1706 ~ core[b5cd]::intrinsics::{extern#1}::caller_location):
+[MIR] `std::intrinsics::caller_location` 1706:
+    (empty)
+[RPIL] `std::intrinsics::caller_location` 1706:
     (empty)
 Next: Some(bb1)
-
-Basic Block bb1:
+---
+bb1 of `std::panic::Location::<'a>::caller` 9571:
 Next: return
-
-[RPIL] DefId(2:9571 ~ core[b5cd]::panic::location::{impl#0}::caller):
+---
+[RPIL] `std::panic::Location::<'a>::caller` 9571:
     (empty)
 Next: Some(bb3)
-
-Basic Block bb3:
+---
+bb3 of `std::rt::panic_fmt` 9709:
 Statement: Assign((_7, &(*_8)))
 [Rvalue] Ref((*_8))
 [Projection] _8, [Deref]
 [Projection Result] ($8)*
 [RPIL] BORROW $7, ($8)*
 Terminator: Assign((_5, core::panic::panic_info::PanicInfo::<'_>::new[Spanned { node: move _6, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:67:9: 67:12 (#0) }, Spanned { node: move _7, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:68:9: 68:27 (#0) }, Spanned { node: const true, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:69:26: 69:30 (#0) }, Spanned { node: const false, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:70:34: 70:39 (#0) }]))
-[MIR] Body for function: core::panic::panic_info::PanicInfo::<'a>::new
-Basic Block bb0:
+[MIR] `core::panic::panic_info::PanicInfo::<'a>::new` 9590:
+bb0 of `core::panic::panic_info::PanicInfo::<'a>::new` 9590:
 Statement: Assign((_5, &(*_2)))
 [Rvalue] Ref((*_2))
 [Projection] _2, [Deref]
@@ -660,8 +418,8 @@ Statement: Assign((_0, core::panic::panic_info::PanicInfo::<'_> { message: move 
 [RPIL] MOVE $8
 [RPIL] BIND $0.v0p3, $8
 Next: return
-
-[RPIL] DefId(2:9590 ~ core[b5cd]::panic::panic_info::{impl#0}::new):
+---
+[RPIL] `core::panic::panic_info::PanicInfo::<'a>::new` 9590:
     BORROW $5, ($2)*
     BIND $6, $1
     BIND $7, $3
@@ -675,8 +433,8 @@ Next: return
     MOVE $8
     BIND $0.v0p3, $8
 Next: Some(bb4)
-
-Basic Block bb4:
+---
+bb4 of `std::rt::panic_fmt` 9709:
 Statement: Assign((_10, &_5))
 [Rvalue] Ref(_5)
 [RPIL] BORROW $10, $5
@@ -686,32 +444,32 @@ Statement: Assign((_9, &(*_10)))
 [Projection Result] ($10)*
 [RPIL] BORROW $9, ($10)*
 Terminator: Assign((_0, std::rt::panic_fmt::panic_impl[Spanned { node: move _9, span: /Users/dnomkr/.rustup/toolchains/miri/lib/rustlib/src/rust/library/core/src/panicking.rs:74:25: 74:28 (#0) }]))
-[MIR] Body for function: std::rt::panic_fmt::panic_impl
-MIR not available for `DefId(2:9711 ~ core[b5cd]::panicking::panic_fmt::{extern#0}::panic_impl)`
-[RPIL] DefId(2:9711 ~ core[b5cd]::panicking::panic_fmt::{extern#0}::panic_impl):
+[MIR] `std::rt::panic_fmt::panic_impl` 9711:
+    (empty)
+[RPIL] `std::rt::panic_fmt::panic_impl` 9711:
     (empty)
 Next: None
-
-[RPIL] DefId(2:9709 ~ core[b5cd]::panicking::panic_fmt):
+---
+[RPIL] `std::rt::panic_fmt` 9709:
     BIND $6, $1
     BORROW $7, ($8)*
     BORROW $10, $5
     BORROW $9, ($10)*
 Next: None
-
-[RPIL] DefId(2:9717 ~ core[b5cd]::panicking::panic):
+---
+[RPIL] `core::panicking::panic` 9717:
     BIND $7, $1
     MOVE $7
     BIND $6.p0, $7
     BORROW $5, $6
     BORROW $4, ($5)*
 Next: None
-
-[RPIL] DefId(2:9431 ~ core[b5cd]::option::unwrap_failed):
+---
+[RPIL] `std::option::unwrap_failed` 9431:
     (empty)
 Next: None
-
-Basic Block bb3:
+---
+bb3 of `std::option::Option::<T>::unwrap` 9362:
 Statement: Assign((_3, move ((_1 as Some).0: T)))
 [Rvalue] Use(move ((_1 as Some).0: T))
 [Projection] _1, [Downcast(Some("Some"), 1), Field(0, T/#0)]
@@ -725,40 +483,37 @@ Statement: Assign((_0, move _3))
 [RPIL] MOVE $3
 [RPIL] BIND $0, $3
 Next: return
-
-Basic Block bb4:
+---
+bb4 of `std::option::Option::<T>::unwrap` 9362:
 Next: !
-
-[RPIL] DefId(2:9362 ~ core[b5cd]::option::{impl#0}::unwrap):
+---
+[RPIL] `std::option::Option::<T>::unwrap` 9362:
     MOVE $1.v1p0
     BIND $3, $1.v1p0
     MOVE $3
     BIND $0, $3
 Next: Some(bb3)
-
-Basic Block bb3:
+---
+bb3 of `do_something` 24:
 Statement: Assign((_0, (_7.0: isize)))
 [Rvalue] Use((_7.0: isize))
 [Projection] _7, [Field(0, isize)]
 [Projection Result] $7.p0
 [RPIL] BIND $0, $7.p0
 Next: return
-
-[RPIL] Result: [
-    BIND $2.v0p1, $1.p1,
-    MOVE $2,
-    BIND $4, $2,
-    MOVE $4,
-    BIND $3.v1p0, $4,
-    MOVE $3,
-    BIND $6, $3,
-    MOVE $6,
-    BIND $5.v2p4, $6,
-    MOVE $5.v2p4,
-    BIND $10, $5.v2p4,
-    MOVE $10,
-    BIND $8, $10,
-    BIND $0, $7.p0,
-]
-warning: 3 warnings emitted
-
+---
+[RPIL] `do_something` 24:
+    BIND $2.v0p1, $1.p1
+    MOVE $2
+    BIND $4, $2
+    MOVE $4
+    BIND $3.v1p0, $4
+    MOVE $3
+    BIND $6, $3
+    MOVE $6
+    BIND $5.v2p4, $6
+    MOVE $5.v2p4
+    BIND $10, $5.v2p4
+    MOVE $10
+    BIND $8, $10
+    BIND $0, $7.p0

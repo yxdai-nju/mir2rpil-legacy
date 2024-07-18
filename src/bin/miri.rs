@@ -165,21 +165,85 @@ impl TranslationCtxt {
     }
 }
 
+fn prepare_debug_log_func_mir() {
+    use std::fs;
+
+    let crate_root = std::env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR");
+    let log_dir = PathBuf::from(crate_root).join("playground").join("mir");
+    fs::create_dir_all(&log_dir).unwrap();
+
+    // If the directory already existed, clean it
+    if log_dir.is_dir() {
+        for entry in fs::read_dir(&log_dir).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.is_file() {
+                fs::remove_file(path).unwrap();
+            }
+        }
+    }
+}
+
+#[allow(clippy::needless_lifetimes)]
+fn debug_log_func_mir<'tcx>(tcx: TyCtxt<'tcx>, func_id: hir::def_id::DefId) {
+    use std::fs::File;
+    use std::io::Write;
+
+    let crate_root = std::env::var("CARGO_MANIFEST_DIR").expect("Failed to get CARGO_MANIFEST_DIR");
+    let log_dir = PathBuf::from(crate_root).join("playground").join("mir");
+
+    let debug_output = if !tcx.is_mir_available(func_id) {
+        "(empty)\n".into()
+    } else {
+        let mir_body = tcx.optimized_mir(func_id);
+        format!("{:?}\n{:#?}\n\n", func_id, mir_body)
+    };
+    let func_name = tcx.def_path_str(func_id);
+    let func_id = func_id.index.as_u32();
+
+    let log_path = log_dir.join(format!("{}.{}.log", func_name, func_id));
+    let mut file = File::create(&log_path)
+        .unwrap_or_else(|_| panic!("Failed to open `{}`", log_path.display()));
+    writeln!(file, "{}", debug_output)
+        .unwrap_or_else(|_| panic!("Failed to write to `{}`", log_path.display()));
+}
+
+#[allow(clippy::needless_lifetimes)]
+fn debug_func_rpil_insts<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    func_id: hir::def_id::DefId,
+    rpil_insts: &Vec<RpilInst>,
+) {
+    let fn_name = tcx.def_path_str(func_id);
+    let fn_id = func_id.index.as_u32();
+    println!("[RPIL] `{}` {}:", fn_name, fn_id);
+    if !rpil_insts.is_empty() {
+        for inst in rpil_insts {
+            println!("    {:?}", inst);
+        }
+    } else {
+        println!("    (empty)");
+    }
+}
+
 #[allow(clippy::needless_lifetimes)]
 fn rpil_of_func<'tcx>(tcx: TyCtxt<'tcx>, func_id: hir::def_id::DefId) -> Vec<RpilInst> {
-    let mut trcx = TranslationCtxt::new();
+    debug_log_func_mir(tcx, func_id);
 
     let fn_name = tcx.def_path_str(func_id);
-    println!("[MIR] Body for function: {}", fn_name);
-
+    let fn_id = func_id.index.as_u32();
+    println!("[MIR] `{}` {}:", fn_name, fn_id);
     if !tcx.is_mir_available(func_id) {
-        println!("MIR not available for `{:?}`", func_id);
+        println!("    (empty)");
         return vec![];
     }
 
-    let body = tcx.optimized_mir(func_id);
-    for (bb, block_data) in body.basic_blocks.iter_enumerated() {
-        println!("Basic Block {:?}:", bb);
+    // Initialize MIR->RPIL translation context
+    let mut trcx = TranslationCtxt::new();
+
+    let mir_body = tcx.optimized_mir(func_id);
+    for (bb, block_data) in mir_body.basic_blocks.iter_enumerated() {
+        println!("{:?} of `{}` {}:", bb, fn_name, fn_id);
         translate_basic_block(tcx, block_data, &mut trcx);
     }
 
@@ -197,7 +261,7 @@ fn translate_basic_block<'tcx>(
     if let Some(terminator) = &block_data.terminator {
         translate_terminator(tcx, terminator, trcx);
     }
-    println!();
+    println!("---");
 }
 
 fn translate_statement<'tcx>(
@@ -358,14 +422,7 @@ fn translate_terminator<'tcx>(
             println!("Terminator: Assign(({:?}, {:?}{:?}))", destination, func, args);
             let called_func_id = def_id_of_func_operand(func);
             let rpil_insts = rpil_of_func(tcx, called_func_id);
-            println!("[RPIL] {:?}:", called_func_id);
-            if !rpil_insts.is_empty() {
-                for inst in rpil_insts {
-                    println!("    {:?}", inst);
-                }
-            } else {
-                println!("    (empty)");
-            }
+            debug_func_rpil_insts(tcx, called_func_id, &rpil_insts);
 
             // let args: Vec<_> = args.iter().map(|s| s.node.clone()).collect();
             println!("Next: {:?}", target);
@@ -417,8 +474,10 @@ impl rustc_driver::Callbacks for MiriCompilerCalls {
         _: &rustc_interface::interface::Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> Compilation {
+        prepare_debug_log_func_mir();
+
         queries.global_ctxt().unwrap().enter(|tcx| {
-            let mut pub_fns = vec![];
+            let mut pub_funcs = vec![];
             let items = tcx.hir_crate_items(());
             let free_items_owner_id = items.free_items().map(|id| id.owner_id);
             let impl_items_owner_id = items.impl_items().map(|id| id.owner_id);
@@ -426,80 +485,16 @@ impl rustc_driver::Callbacks for MiriCompilerCalls {
             for func_id in func_ids {
                 if let hir::def::DefKind::Fn | hir::def::DefKind::AssocFn = tcx.def_kind(func_id) {
                     if tcx.visibility(func_id).is_public() {
-                        pub_fns.push(func_id);
+                        pub_funcs.push(func_id);
                     }
                 }
             }
-            println!("Public functions: {:?}\n", pub_fns);
-            for pub_fn in pub_fns {
-                let rpil = rpil_of_func(tcx, pub_fn);
-                println!("[RPIL] Result: {:#?}", rpil);
+            println!("Public functions: {:#?}\n", pub_funcs);
+            for pub_func in pub_funcs {
+                let rpil = rpil_of_func(tcx, pub_func);
+                debug_func_rpil_insts(tcx, pub_func, &rpil);
             }
         });
-
-        // queries.global_ctxt().unwrap().enter(|tcx| {
-        //     if tcx.sess.dcx().has_errors_or_delayed_bugs().is_some() {
-        //         tcx.dcx().fatal("miri cannot be run on programs that fail compilation");
-        //     }
-
-        //     let early_dcx = EarlyDiagCtxt::new(tcx.sess.opts.error_format);
-        //     init_late_loggers(&early_dcx, tcx);
-        //     // if !tcx.crate_types().contains(&CrateType::Executable) {
-        //     //     tcx.dcx().fatal("miri only makes sense on bin crates");
-        //     // }
-
-        //     // let (entry_def_id, entry_type) = if let Some(entry_def) = tcx.entry_fn(()) {
-        //     //     entry_def
-        //     // } else {
-        //     //     tcx.dcx().fatal("miri can only run programs that have a main function");
-        //     // };
-        //     let mut funcs_owner_id = tcx.hir_crate_items(()).free_items().map(|x| x.owner_id);
-        //     let mut pubfns = vec![];
-        //     for owner_id in funcs_owner_id {
-        //                 if let hir::def::DefKind::Fn | hir::def::DefKind::AssocFn = tcx.def_kind(owner_id) {
-        //                     if tcx.visibility(owner_id).is_public() {
-        //                         pubfns.push(owner_id);
-        //                     }
-        //                 }
-        //             }
-        //     let pubfn_def_id = pubfns.first().unwrap().to_def_id();
-        //     let body = tcx.optimized_mir(pubfn_def_id);
-        //     println!("[MIR] {:#?}", body);
-        //     let mut config = self.miri_config.clone();
-
-        //     // Add filename to `miri` arguments.
-        //     config.args.insert(0, tcx.sess.io.input.filestem().to_string());
-
-        //     // Adjust working directory for interpretation.
-        //     if let Some(cwd) = env::var_os("MIRI_CWD") {
-        //         env::set_current_dir(cwd).unwrap();
-        //     }
-
-        //     if tcx.sess.opts.optimize != OptLevel::No {
-        //         tcx.dcx().warn("Miri does not support optimizations: the opt-level is ignored. The only effect \
-        //             of selecting a Cargo profile that enables optimizations (such as --release) is to apply \
-        //             its remaining settings, such as whether debug assertions and overflow checks are enabled.");
-        //     }
-        //     if tcx.sess.mir_opt_level() > 0 {
-        //         tcx.dcx().warn("You have explicitly enabled MIR optimizations, overriding Miri's default \
-        //             which is to completely disable them. Any optimizations may hide UB that Miri would \
-        //             otherwise detect, and it is not necessarily possible to predict what kind of UB will \
-        //             be missed. If you are enabling optimizations to make Miri run faster, we advise using \
-        //             cfg(miri) to shrink your workload instead. The performance benefit of enabling MIR \
-        //             optimizations is usually marginal at best.");
-        //     }
-
-        //     // if let Some(return_code) = miri::eval_entry(tcx, entry_def_id, entry_type, config) {
-        //     //     std::process::exit(
-        //     //         i32::try_from(return_code).expect("Return value was too large!"),
-        //     //     );
-        //     // }
-        //     println!("[RPIL] Evaluating `{:?}`", pubfn_def_id);
-        //     let rpil = miri::eval_pubfn(tcx, pubfn_def_id, config);
-        //     println!("[RPIL] Result: {:?}", rpil);
-
-        //     tcx.dcx().abort_if_errors();
-        // });
 
         Compilation::Stop
     }
