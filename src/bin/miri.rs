@@ -58,6 +58,7 @@ struct MiriCompilerCalls {
 
 enum RpilOp {
     Var(usize),
+    Closure(hir::def_id::DefId),
     Place(Box<RpilOp>, String),
     ExternPlace(Box<RpilOp>),
     Deref(Box<RpilOp>),
@@ -67,7 +68,8 @@ impl fmt::Debug for RpilOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use RpilOp::*;
         match self {
-            Var(var) => write!(f, "${:?}", var),
+            Var(var) => write!(f, "${}", var),
+            Closure(closure_id) => write!(f, "{{closure:{}}}", closure_id.index.as_u32()),
             Place(op, place) => write!(f, "{:?}.{}", op, place),
             ExternPlace(op) => write!(f, "{:?}.extern", op),
             Deref(op) => write!(f, "({:?})*", op),
@@ -242,6 +244,8 @@ fn rpil_of_func<'tcx>(tcx: TyCtxt<'tcx>, func_id: hir::def_id::DefId) -> Vec<Rpi
     let mut trcx = TranslationCtxt::new();
 
     let mir_body = tcx.optimized_mir(func_id);
+
+    // TODO: Support jumping between BBs according to terminator targets
     for (bb, block_data) in mir_body.basic_blocks.iter_enumerated() {
         println!("{:?} of `{}` {}:", bb, fn_name, fn_id);
         translate_basic_block(tcx, block_data, &mut trcx);
@@ -329,6 +333,13 @@ fn translate_statement_of_assign<'tcx>(
                 rpil_place(rplace),
             ));
         }
+        mir::Rvalue::CopyForDeref(rplace) => {
+            println!("[Rvalue] CopyForDeref({:?})", rplace);
+            trcx.push_rpil_inst(RpilInst::Bind(
+                RpilOp::Var(place.local.as_usize()),
+                rpil_place(rplace),
+            ));
+        }
         mir::Rvalue::Discriminant(..) => {}
         _ => {
             let x = discriminant(rvalue);
@@ -349,8 +360,12 @@ fn translate_statement_of_assign_aggregate<'tcx>(
         _ => unreachable!(),
     };
     match aggregate {
-        mir::AggregateKind::Array(..) => {
-            println!("[AggregateKind] Array({:?})", values);
+        mir::AggregateKind::Array(..) | mir::AggregateKind::Tuple => {
+            if let mir::AggregateKind::Array(..) = aggregate {
+                println!("[Aggregate] Array({:?})", values);
+            } else {
+                println!("[Aggregate] Tuple({:?})", values);
+            }
             for (lidx, value) in values.iter().enumerate() {
                 match value {
                     mir::Operand::Copy(rplace) => {
@@ -377,7 +392,7 @@ fn translate_statement_of_assign_aggregate<'tcx>(
             }
         }
         mir::AggregateKind::Adt(_, variant_idx, _, _, _) => {
-            println!("[AggregateKind] Adt(variant_idx={:?})", variant_idx);
+            println!("[Aggregate] Adt(variant_idx={:?})", variant_idx);
             for (lidx, value) in values.iter().enumerate() {
                 match value {
                     mir::Operand::Copy(rplace) => {
@@ -403,9 +418,16 @@ fn translate_statement_of_assign_aggregate<'tcx>(
                 }
             }
         }
+        mir::AggregateKind::Closure(closure_id, _) => {
+            println!("[Aggregate] Closure(def_id={})", closure_id.index.as_u32());
+            trcx.push_rpil_inst(RpilInst::Bind(
+                RpilOp::Var(place.local.as_usize()),
+                RpilOp::Closure(*closure_id),
+            ));
+        }
         _ => {
             let x = discriminant(aggregate);
-            println!("[AggregateKind-{:?}] Unknown `{:?}`", x, aggregate);
+            println!("[Aggregate-{:?}] Unknown `{:?}`", x, aggregate);
             unimplemented!();
         }
     };
@@ -419,12 +441,12 @@ fn translate_terminator<'tcx>(
     let terminator = &terminator.kind;
     match terminator {
         mir::TerminatorKind::Call { ref func, ref args, destination, target, .. } => {
+            let args: Vec<_> = args.iter().map(|s| s.node.clone()).collect();
             println!("Terminator: Assign(({:?}, {:?}{:?}))", destination, func, args);
             let called_func_id = def_id_of_func_operand(func);
             let rpil_insts = rpil_of_func(tcx, called_func_id);
             debug_func_rpil_insts(tcx, called_func_id, &rpil_insts);
 
-            // let args: Vec<_> = args.iter().map(|s| s.node.clone()).collect();
             println!("Next: {:?}", target);
         }
         mir::TerminatorKind::Drop { place, target, .. } => {

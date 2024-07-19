@@ -1,2 +1,3 @@
 #!/usr/bin/env bash
-./miri run playground/simple.rs > playground/simple.log
+# ./miri run playground/simple.rs > playground/simple.log
+./miri run playground/rc_as_pinmut.rs > playground/rc_as_pinmut.log
