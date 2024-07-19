@@ -326,12 +326,22 @@ fn translate_statement_of_assign<'tcx>(
             println!("[Rvalue] Aggregate({:?}, {:?})", aggregate, values);
             translate_statement_of_assign_aggregate(tcx, place, rvalue, trcx);
         }
-        mir::Rvalue::Ref(_, _, rplace) => {
-            println!("[Rvalue] Ref({:?})", rplace);
-            trcx.push_rpil_inst(RpilInst::Borrow(
-                RpilOp::Var(place.local.as_usize()),
-                rpil_place(rplace),
-            ));
+        mir::Rvalue::Ref(_, kind, rplace) => {
+            let (lhs, rhs) = (RpilOp::Var(place.local.as_usize()), rpil_place(rplace));
+            match kind {
+                mir::BorrowKind::Shared => {
+                    println!("[Rvalue] Ref(Shared, {:?})", rplace);
+                    trcx.push_rpil_inst(RpilInst::Borrow(lhs, rhs));
+                }
+                mir::BorrowKind::Mut { kind } => {
+                    println!("[Rvalue] Ref(Mut({:?}), {:?})", kind, rplace);
+                    trcx.push_rpil_inst(RpilInst::BorrowMut(lhs, rhs));
+                }
+                mir::BorrowKind::Fake(kind) => {
+                    println!("[Rvalue] Ref(Fake({:?}), {:?})", kind, rplace);
+                    unimplemented!();
+                }
+            };
         }
         mir::Rvalue::CopyForDeref(rplace) => {
             println!("[Rvalue] CopyForDeref({:?})", rplace);
