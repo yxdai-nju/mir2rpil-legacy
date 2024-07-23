@@ -337,6 +337,7 @@ fn translate_statement_of_assign<'tcx>(
     trcx: &mut TranslationCtxt,
 ) {
     let place = rpil_place(place);
+    println!("[LHS] {:?}", place);
     match rvalue {
         mir::Rvalue::Use(operand) | mir::Rvalue::Cast(_, operand, _) => {
             if let mir::Rvalue::Use(_) = rvalue {
@@ -386,17 +387,26 @@ fn translate_statement_of_assign<'tcx>(
                 mir::Operand::Copy(..) => {
                     unimplemented!();
                 }
-                mir::Operand::Move(rplace) => {
-                    trcx.push_rpil_inst(RpilInst::Bind(
-                        RpilOp::Place(
-                            Box::new(RpilOp::Place(
-                                Box::new(RpilOp::Place(Box::new(place), "p0".to_owned())),
-                                "p0".to_owned(),
-                            )),
+                mir::Operand::Move(_ptr) => {
+                    // The `lhs = ShallowInitBox(ptr, T)` operation is similar to
+                    // `lhs = Box::<T>::from_raw(ptr, ..)`. It's sufficient to know
+                    // that the reference stored within lhs (lhs.p0.p0.p0)
+                    // points to some external (heap) location, which we represent
+                    // as lhs.ext.
+                    //
+                    // Therefore, we omit the ptr argument and interpret this
+                    // operation as:
+                    //
+                    // BORROW-MUT lhs.p0.p0.p0, lhs.ext.
+                    let ptr = RpilOp::Place(
+                        Box::new(RpilOp::Place(
+                            Box::new(RpilOp::Place(Box::new(place.clone()), "p0".to_owned())),
                             "p0".to_owned(),
-                        ),
-                        rpil_place(rplace),
-                    ));
+                        )),
+                        "p0".to_owned(),
+                    );
+                    let ext_place = RpilOp::Place(Box::new(place), "ext".to_owned());
+                    trcx.push_rpil_inst(RpilInst::BorrowMut(ptr, ext_place));
                 }
                 mir::Operand::Constant(_) => {}
             }
@@ -501,9 +511,17 @@ fn translate_terminator<'tcx>(
             let args: Vec<_> = args.iter().map(|s| s.node.clone()).collect();
             println!("Terminator: Assign(({:?}, {:?}{:?}))", destination, func, args);
             let called_func_id = def_id_of_func_operand(func);
-            // let rpil_insts = translate_func_call(tcx, called_func_id, args);
-            let rpil_insts = translate_func_def(tcx, called_func_id); // DEBUG
-            debug_func_rpil_insts(tcx, called_func_id, &rpil_insts);
+            let func_name = tcx.def_path_str(called_func_id);
+            println!("Function Name: {}", func_name);
+
+            let excluded_from_translation: std::collections::HashSet<&str> =
+                ["alloc::alloc::exchange_malloc"].iter().cloned().collect();
+
+            if !excluded_from_translation.contains(func_name.as_str()) {
+                // let rpil_insts = translate_func_call(tcx, called_func_id, args);
+                let rpil_insts = translate_func_def(tcx, called_func_id); // DEBUG
+                debug_func_rpil_insts(tcx, called_func_id, &rpil_insts);
+            }
 
             println!("Next: {:?}", target);
         }
