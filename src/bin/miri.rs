@@ -61,7 +61,6 @@ enum RpilOp {
     Var(usize),
     Closure(hir::def_id::DefId),
     Place(Box<RpilOp>, String),
-    ExternPlace(Box<RpilOp>),
     Deref(Box<RpilOp>),
 }
 
@@ -72,7 +71,6 @@ impl fmt::Debug for RpilOp {
             Var(var) => write!(f, "${}", var),
             Closure(closure_id) => write!(f, "{{closure:{}}}", closure_id.index.as_u32()),
             Place(op, place) => write!(f, "{:?}.{}", op, place),
-            ExternPlace(op) => write!(f, "{:?}.extern", op),
             Deref(op) => write!(f, "({:?})*", op),
         }
     }
@@ -116,7 +114,8 @@ fn def_id_of_func_operand<'tcx>(func: &'tcx mir::Operand<'tcx>) -> hir::def_id::
     }
 }
 
-fn project_rpil_place<'tcx>(place: &'tcx mir::Place<'tcx>, idx: usize) -> RpilOp {
+#[allow(clippy::needless_lifetimes)]
+fn project_rpil_place<'tcx>(place: &mir::Place<'tcx>, idx: usize) -> RpilOp {
     if idx == place.projection.len() {
         return RpilOp::Var(place.local.as_usize());
     }
@@ -144,7 +143,7 @@ fn project_rpil_place<'tcx>(place: &'tcx mir::Place<'tcx>, idx: usize) -> RpilOp
     }
 }
 
-fn rpil_place<'tcx>(place: &'tcx mir::Place<'tcx>) -> RpilOp {
+fn rpil_place<'tcx>(place: &mir::Place<'tcx>) -> RpilOp {
     let projection = project_rpil_place(place, 0);
     if place.projection.len() > 0 {
         println!("[Projection] {:?}, {:?}", place.local, place.projection);
@@ -201,10 +200,10 @@ fn debug_log_func_mir<'tcx>(tcx: TyCtxt<'tcx>, func_id: hir::def_id::DefId) {
         let mir_body = tcx.optimized_mir(func_id);
         format!("{:?}\n{:#?}\n\n", func_id, mir_body)
     };
-    let func_name = tcx.def_path_str(func_id);
+    let func_def_path = tcx.def_path_str(func_id);
     let func_id = func_id.index.as_u32();
 
-    let log_path = log_dir.join(format!("{}.{}.log", func_name, func_id));
+    let log_path = log_dir.join(format!("{}.{}.log", func_def_path, func_id));
     let mut file = File::create(&log_path)
         .unwrap_or_else(|_| panic!("Failed to open `{}`", log_path.display()));
     writeln!(file, "{}", debug_output)
@@ -500,6 +499,23 @@ fn translate_statement_of_assign_aggregate<'tcx>(
     };
 }
 
+#[allow(clippy::needless_lifetimes)]
+fn is_function_excluded<'tcx>(tcx: TyCtxt<'tcx>, def_id: hir::def_id::DefId) -> bool {
+    let excluded_from_translation: rustc_data_structures::fx::FxHashSet<&str> =
+        ["alloc::alloc::exchange_malloc"].iter().cloned().collect();
+    let def_path = tcx.def_path_str(def_id);
+    excluded_from_translation.contains(def_path.as_str())
+}
+
+#[allow(clippy::needless_lifetimes)]
+fn is_fn_trait_shim<'tcx>(tcx: TyCtxt<'tcx>, def_id: hir::def_id::DefId) -> bool {
+    let def_path = tcx.def_path_str(def_id);
+    def_path.contains("::call")
+        && (def_path.contains("std::ops::Fn")
+            || def_path.contains("std::ops::FnMut")
+            || def_path.contains("std::ops::FnOnce"))
+}
+
 fn translate_terminator<'tcx>(
     tcx: TyCtxt<'tcx>,
     terminator: &'tcx mir::Terminator<'tcx>,
@@ -511,16 +527,21 @@ fn translate_terminator<'tcx>(
             let args: Vec<_> = args.iter().map(|s| s.node.clone()).collect();
             println!("Terminator: Assign(({:?}, {:?}{:?}))", destination, func, args);
             let called_func_id = def_id_of_func_operand(func);
-            let func_name = tcx.def_path_str(called_func_id);
-            println!("Function Name: {}", func_name);
+            println!("Function Name: {}", tcx.def_path_str(called_func_id));
 
-            let excluded_from_translation: std::collections::HashSet<&str> =
-                ["alloc::alloc::exchange_malloc"].iter().cloned().collect();
-
-            if !excluded_from_translation.contains(func_name.as_str()) {
-                // let rpil_insts = translate_func_call(tcx, called_func_id, args);
-                let rpil_insts = translate_func_def(tcx, called_func_id); // DEBUG
-                debug_func_rpil_insts(tcx, called_func_id, &rpil_insts);
+            if !is_function_excluded(tcx, called_func_id) {
+                if is_fn_trait_shim(tcx, called_func_id) {
+                    let place = match args.first().unwrap() {
+                        mir::Operand::Move(place) => place,
+                        _ => unreachable!(),
+                    };
+                    println!("Function Place: {:?}", rpil_place(place));
+                    todo!("support storing and referring to closures");
+                } else {
+                    // let rpil_insts = translate_func_call(tcx, called_func_id, args);
+                    let rpil_insts = translate_func_def(tcx, called_func_id); // DEBUG
+                    debug_func_rpil_insts(tcx, called_func_id, &rpil_insts);
+                }
             }
 
             println!("Next: {:?}", target);
