@@ -83,6 +83,7 @@ mod eval;
 mod helpers;
 mod intrinsics;
 mod machine;
+pub mod mir2rpil;
 mod mono_hash_map;
 mod operator;
 mod provenance_gc;
