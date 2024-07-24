@@ -5,28 +5,49 @@ use std::fmt;
 use std::mem::discriminant;
 
 #[derive(Clone)]
-pub enum RpilOp {
-    Var(usize),
-    Closure(DefId),
-    Place(Box<RpilOp>, String),
-    Deref(Box<RpilOp>),
+pub enum LowRpilOp {
+    Var { depth: usize, index: usize },
+    Place { base: Box<LowRpilOp>, place_string: String },
+    Closure { def_id: DefId },
+    Ref(Box<LowRpilOp>),
+    MutRef(Box<LowRpilOp>),
+    Deref(Box<LowRpilOp>),
+    Move(Box<LowRpilOp>),
 }
 
-impl fmt::Debug for RpilOp {
+impl fmt::Debug for LowRpilOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use RpilOp::*;
+        use LowRpilOp::*;
         match self {
-            Var(var) => write!(f, "${}", var),
-            Closure(closure_id) => write!(f, "{{closure:{}}}", closure_id.index.as_u32()),
-            Place(op, place) => write!(f, "{:?}.{}", op, place),
+            Var { depth, index } => write!(f, "{}_{}", depth, index),
+            Place { base, place_string } => write!(f, "{:?}.{}", base, place_string),
+            Closure { def_id } => write!(f, "{{closure:{}}}", def_id.index.as_u32()),
+            Ref(op) => write!(f, "& {:?}", op),
+            MutRef(op) => write!(f, "&mut {:?}", op),
             Deref(op) => write!(f, "({:?})*", op),
+            Move(op) => write!(f, "move {:?}", op),
         }
     }
 }
 
-impl RpilOp {
-    pub fn from_mir_place<'tcx>(place: &mir::Place<'tcx>) -> Self {
-        let projection = project_rpil_place(place, 0);
+pub enum LowRpilInst {
+    Assign { lhs: LowRpilOp, rhs: LowRpilOp },
+    Return,
+}
+
+impl fmt::Debug for LowRpilInst {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use LowRpilInst::*;
+        match self {
+            Assign { lhs, rhs } => write!(f, "{:?} = {:?};", lhs, rhs),
+            Return => write!(f, "return;"),
+        }
+    }
+}
+
+impl LowRpilOp {
+    pub fn from_mir_place<'tcx>(place: &mir::Place<'tcx>, depth: usize) -> Self {
+        let projection = project_rpil_place(place, 0, depth);
         if place.projection.len() > 0 {
             println!("[Projection] {:?}, {:?}", place.local, place.projection);
             println!("[Projection Result] {:?}", projection);
@@ -36,12 +57,12 @@ impl RpilOp {
 }
 
 pub enum RpilInst {
-    Bind(RpilOp, RpilOp),
-    Borrow(RpilOp, RpilOp),
-    BorrowMut(RpilOp, RpilOp),
-    Move(RpilOp),
-    DerefMove(RpilOp),
-    DerefPin(RpilOp),
+    Bind(LowRpilOp, LowRpilOp),
+    Borrow(LowRpilOp, LowRpilOp),
+    BorrowMut(LowRpilOp, LowRpilOp),
+    Move(LowRpilOp),
+    DerefMove(LowRpilOp),
+    DerefPin(LowRpilOp),
 }
 
 impl fmt::Debug for RpilInst {
@@ -58,23 +79,27 @@ impl fmt::Debug for RpilInst {
     }
 }
 
-fn project_rpil_place<'tcx>(place: &mir::Place<'tcx>, idx: usize) -> RpilOp {
+fn project_rpil_place<'tcx>(place: &mir::Place<'tcx>, idx: usize, depth: usize) -> LowRpilOp {
     if idx == place.projection.len() {
-        return RpilOp::Var(place.local.as_usize());
+        return LowRpilOp::Var { depth, index: place.local.as_usize() };
     }
     let rplace = &place.projection[idx];
     match rplace {
         mir::ProjectionElem::Field(ridx, _) =>
-            RpilOp::Place(
-                Box::new(project_rpil_place(place, idx + 1)),
-                format!("p{}", ridx.as_usize()),
-            ),
-        mir::ProjectionElem::Deref => RpilOp::Deref(Box::new(project_rpil_place(place, idx + 1))),
+            LowRpilOp::Place {
+                base: Box::new(project_rpil_place(place, idx + 1, depth)),
+                place_string: format!("p{}", ridx.as_usize()),
+            },
+        mir::ProjectionElem::Deref =>
+            LowRpilOp::Deref(Box::new(project_rpil_place(place, idx + 1, depth))),
         mir::ProjectionElem::Downcast(_, variant_idx) => {
-            let next_projection = project_rpil_place(place, idx + 1);
+            let next_projection = project_rpil_place(place, idx + 1, depth);
             match next_projection {
-                RpilOp::Place(op, place_string) =>
-                    RpilOp::Place(op, format!("v{}{}", variant_idx.as_usize(), place_string)),
+                LowRpilOp::Place { base, place_string } =>
+                    LowRpilOp::Place {
+                        base,
+                        place_string: format!("v{}{}", variant_idx.as_usize(), place_string),
+                    },
                 _ => unreachable!(),
             }
         }
