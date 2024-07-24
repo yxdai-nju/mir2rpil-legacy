@@ -1,3 +1,5 @@
+pub mod debug;
 mod rpil;
+mod translate;
 
-pub use rpil::{debug_func_rpil_insts, prepare_debug_log_func_mir, translate_func_def};
+pub use translate::translate_func_def;

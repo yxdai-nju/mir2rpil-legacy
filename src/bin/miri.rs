@@ -72,7 +72,7 @@ impl rustc_driver::Callbacks for MiriCompilerCalls {
         _: &rustc_interface::interface::Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> Compilation {
-        mir2rpil::prepare_debug_log_func_mir();
+        mir2rpil::debug::prepare_func_mir_log_dir();
 
         queries.global_ctxt().unwrap().enter(|tcx| {
             if tcx.sess.dcx().has_errors_or_delayed_bugs().is_some() {
@@ -120,7 +120,7 @@ impl rustc_driver::Callbacks for MiriCompilerCalls {
             println!("Public functions: {:#?}\n", pub_funcs);
             for pub_func in pub_funcs {
                 let rpil = mir2rpil::translate_func_def(tcx, pub_func);
-                mir2rpil::debug_func_rpil_insts(tcx, pub_func, &rpil);
+                mir2rpil::debug::print_func_rpil_insts(tcx, pub_func, &rpil);
             }
 
             tcx.dcx().abort_if_errors();
