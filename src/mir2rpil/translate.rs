@@ -20,6 +20,56 @@ impl TranslationCtxt {
 
     fn push_rpil_inst(&mut self, inst: LowRpilInst) {
         println!("[Low-RPIL] {:?}", inst);
+        match inst {
+            LowRpilInst::Assign { lhs, rhs } => {
+                let (lhs, rhs) = (self.reduced_rpil_op(&lhs), self.reduced_rpil_op(&rhs));
+                println!("[Context] {:?}", self.mapping);
+                println!(
+                    "[Simplified Low-RPIL] {:?}",
+                    LowRpilInst::Assign { lhs: lhs.clone(), rhs: rhs.clone() }
+                );
+                self.mapping.insert(lhs, rhs);
+                println!("[Context] {:?}", self.mapping);
+            }
+            LowRpilInst::Return => {}
+        };
+    }
+
+    fn reduced_rpil_op(&mut self, op: &LowRpilOp) -> LowRpilOp {
+        if let Some(mapped_op) = self.mapping.get(op).cloned() {
+            return self.reduced_rpil_op(&mapped_op);
+        }
+        match op {
+            LowRpilOp::Var { .. } | LowRpilOp::Closure { .. } => op.clone(),
+            LowRpilOp::Ref(inner_op) => {
+                let reduced_inner_op = self.reduced_rpil_op(inner_op);
+                LowRpilOp::Ref(Box::new(reduced_inner_op))
+            }
+            LowRpilOp::MutRef(inner_op) => {
+                let reduced_inner_op = self.reduced_rpil_op(inner_op);
+                LowRpilOp::MutRef(Box::new(reduced_inner_op))
+            }
+            LowRpilOp::Place { base: inner_op, place_string } => {
+                let reduced_inner_op = self.reduced_rpil_op(inner_op);
+                LowRpilOp::Place {
+                    base: Box::new(reduced_inner_op),
+                    place_string: place_string.clone(),
+                }
+            }
+            LowRpilOp::Deref(inner_op) => {
+                let reduced_inner_op = self.reduced_rpil_op(inner_op);
+                match reduced_inner_op {
+                    LowRpilOp::Ref(derefed_op) | LowRpilOp::MutRef(derefed_op) =>
+                        self.reduced_rpil_op(&derefed_op),
+                    _ => LowRpilOp::Deref(Box::new(reduced_inner_op)),
+                }
+            }
+            LowRpilOp::Move(inner_op) => {
+                let reduced_inner_op = self.reduced_rpil_op(inner_op);
+                self.mapping.remove(inner_op);
+                reduced_inner_op
+            }
+        }
     }
 
     fn enter_function(&mut self) {
@@ -58,14 +108,8 @@ pub fn translate_func_def<'tcx>(tcx: TyCtxt<'tcx>, func_id: DefId) -> Vec<RpilIn
     trcx.rpil_insts
 }
 
-fn translate_func_call<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    func_id: DefId,
-    args: Vec<mir::Operand<'tcx>>,
-    trcx: &mut TranslationCtxt,
-) {
+fn translate_func_call<'tcx>(tcx: TyCtxt<'tcx>, func_id: DefId, trcx: &mut TranslationCtxt) {
     debug::log_func_mir(tcx, func_id);
-    println!("Function Args: {:?}", args);
 
     trcx.enter_function();
     let fn_name = tcx.def_path_str(func_id);
@@ -78,7 +122,7 @@ fn translate_func_call<'tcx>(
 
     let mir_body = tcx.optimized_mir(func_id);
 
-    // TODO: Support jumping between BBs according to terminator targets
+    // todo!("support jumping between BBs according to terminator targets")
     for (bb, block_data) in mir_body.basic_blocks.iter_enumerated() {
         println!("{:?} of `{}` {}:", bb, fn_name, fn_id);
         translate_basic_block(tcx, block_data, trcx);
@@ -220,7 +264,10 @@ fn translate_statement_of_assign<'tcx>(
                     };
                     let ext_place =
                         LowRpilOp::Place { base: Box::new(lhs), place_string: "ext".to_owned() };
-                    trcx.push_rpil_inst(LowRpilInst::Assign { lhs: ptr, rhs: ext_place });
+                    trcx.push_rpil_inst(LowRpilInst::Assign {
+                        lhs: ptr,
+                        rhs: LowRpilOp::MutRef(Box::new(ext_place)),
+                    });
                 }
                 mir::Operand::Constant(_) => {}
             }
@@ -350,18 +397,29 @@ fn translate_terminator<'tcx>(
             println!("[MIR Term] Assign(({:?}, {:?}{:?}))", destination, func, args);
             let called_func_id = def_id_of_func_operand(func);
             println!("Function Name: {}", tcx.def_path_str(called_func_id));
+            println!("Function Args: {:?}", args);
 
             if !is_function_excluded(tcx, called_func_id) {
                 if is_fn_trait_shim(tcx, called_func_id) {
-                    let place = match args.first().unwrap() {
+                    assert_eq!(args.len(), 2);
+                    let closure_place = match args.first().unwrap() {
                         mir::Operand::Move(place) => place,
                         _ => unreachable!(),
                     };
-                    let func_place = LowRpilOp::from_mir_place(place, trcx.depth);
-                    println!("Function Place: {:?}", func_place);
-                    todo!("support storing and referring to closures");
+                    let closure_op = LowRpilOp::from_mir_place(closure_place, trcx.depth);
+                    let closure_args = args.last().unwrap();
+                    match trcx.reduced_rpil_op(&closure_op).get_inner_closure() {
+                        Some(closure_id) => {
+                            println!("Closure Name: {}", tcx.def_path_str(closure_id));
+                            println!("Closure Args: {:?}", closure_args);
+                            // todo!("add args mapping before translating a function call");
+                            translate_func_call(tcx, closure_id, trcx);
+                        }
+                        None => unreachable!(),
+                    }
                 } else {
-                    translate_func_call(tcx, called_func_id, args, trcx);
+                    // todo!("add args mapping before translating a function call");
+                    translate_func_call(tcx, called_func_id, trcx);
                 }
             }
 

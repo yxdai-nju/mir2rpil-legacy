@@ -4,7 +4,7 @@ use rustc_middle::mir;
 use std::fmt;
 use std::mem::discriminant;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum LowRpilOp {
     Var { depth: usize, index: usize },
     Place { base: Box<LowRpilOp>, place_string: String },
@@ -13,6 +13,17 @@ pub enum LowRpilOp {
     MutRef(Box<LowRpilOp>),
     Deref(Box<LowRpilOp>),
     Move(Box<LowRpilOp>),
+}
+
+impl LowRpilOp {
+    pub fn get_inner_closure(&self) -> Option<DefId> {
+        use LowRpilOp::*;
+        match self {
+            Closure { def_id } => Some(*def_id),
+            Ref(inner_op) | MutRef(inner_op) => inner_op.get_inner_closure(),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Debug for LowRpilOp {
@@ -47,7 +58,7 @@ impl fmt::Debug for LowRpilInst {
 
 impl LowRpilOp {
     pub fn from_mir_place<'tcx>(place: &mir::Place<'tcx>, depth: usize) -> Self {
-        let projection = project_rpil_place(place, 0, depth);
+        let projection = project_rpil_place(place, depth);
         if place.projection.len() > 0 {
             println!("[Projection] {:?}, {:?}", place.local, place.projection);
             println!("[Projection Result] {:?}", projection);
@@ -79,21 +90,26 @@ impl fmt::Debug for RpilInst {
     }
 }
 
-fn project_rpil_place<'tcx>(place: &mir::Place<'tcx>, idx: usize, depth: usize) -> LowRpilOp {
-    if idx == place.projection.len() {
+#[inline(always)]
+fn project_rpil_place<'tcx>(place: &mir::Place<'tcx>, depth: usize) -> LowRpilOp {
+    project_rpil_place_(place, place.projection.len(), depth)
+}
+
+fn project_rpil_place_<'tcx>(place: &mir::Place<'tcx>, idx: usize, depth: usize) -> LowRpilOp {
+    if idx == 0 {
         return LowRpilOp::Var { depth, index: place.local.as_usize() };
     }
-    let rplace = &place.projection[idx];
+    let rplace = &place.projection[idx - 1];
     match rplace {
         mir::ProjectionElem::Field(ridx, _) =>
             LowRpilOp::Place {
-                base: Box::new(project_rpil_place(place, idx + 1, depth)),
+                base: Box::new(project_rpil_place_(place, idx - 1, depth)),
                 place_string: format!("p{}", ridx.as_usize()),
             },
         mir::ProjectionElem::Deref =>
-            LowRpilOp::Deref(Box::new(project_rpil_place(place, idx + 1, depth))),
+            LowRpilOp::Deref(Box::new(project_rpil_place_(place, idx - 1, depth))),
         mir::ProjectionElem::Downcast(_, variant_idx) => {
-            let next_projection = project_rpil_place(place, idx + 1, depth);
+            let next_projection = project_rpil_place_(place, idx - 1, depth);
             match next_projection {
                 LowRpilOp::Place { base, place_string } =>
                     LowRpilOp::Place {
