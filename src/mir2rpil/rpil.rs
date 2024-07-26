@@ -7,12 +7,30 @@ use std::mem::discriminant;
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum LowRpilOp {
     Var { depth: usize, index: usize },
-    Place { base: Box<LowRpilOp>, place_string: String },
+    Place { base: Box<LowRpilOp>, place_desc: PlaceDesc },
     Closure { def_id: DefId },
     Ref(Box<LowRpilOp>),
     MutRef(Box<LowRpilOp>),
     Deref(Box<LowRpilOp>),
     Move(Box<LowRpilOp>),
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub enum PlaceDesc {
+    P(usize),
+    PExt,
+    VP(usize, usize),
+}
+
+impl fmt::Debug for PlaceDesc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use PlaceDesc::*;
+        match self {
+            P(p) => write!(f, "p{}", p),
+            PExt => write!(f, "ext"),
+            VP(v, p) => write!(f, "v{}p{}", v, p),
+        }
+    }
 }
 
 impl LowRpilOp {
@@ -31,7 +49,7 @@ impl fmt::Debug for LowRpilOp {
         use LowRpilOp::*;
         match self {
             Var { depth, index } => write!(f, "{}_{}", depth, index),
-            Place { base, place_string } => write!(f, "{:?}.{}", base, place_string),
+            Place { base, place_desc } => write!(f, "{:?}.{:?}", base, place_desc),
             Closure { def_id } => write!(f, "{{closure:{}}}", def_id.index.as_u32()),
             Ref(op) => write!(f, "& {:?}", op),
             MutRef(op) => write!(f, "&mut {:?}", op),
@@ -104,18 +122,23 @@ fn project_rpil_place_<'tcx>(place: &mir::Place<'tcx>, idx: usize, depth: usize)
         mir::ProjectionElem::Field(ridx, _) =>
             LowRpilOp::Place {
                 base: Box::new(project_rpil_place_(place, idx - 1, depth)),
-                place_string: format!("p{}", ridx.as_usize()),
+                place_desc: PlaceDesc::P(ridx.as_usize()),
             },
         mir::ProjectionElem::Deref =>
             LowRpilOp::Deref(Box::new(project_rpil_place_(place, idx - 1, depth))),
         mir::ProjectionElem::Downcast(_, variant_idx) => {
             let next_projection = project_rpil_place_(place, idx - 1, depth);
             match next_projection {
-                LowRpilOp::Place { base, place_string } =>
+                LowRpilOp::Place { base, place_desc } => {
+                    let place_index = match place_desc {
+                        PlaceDesc::P(place_index) => place_index,
+                        _ => unreachable!(),
+                    };
                     LowRpilOp::Place {
                         base,
-                        place_string: format!("v{}{}", variant_idx.as_usize(), place_string),
-                    },
+                        place_desc: PlaceDesc::VP(variant_idx.as_usize(), place_index),
+                    }
+                }
                 _ => unreachable!(),
             }
         }

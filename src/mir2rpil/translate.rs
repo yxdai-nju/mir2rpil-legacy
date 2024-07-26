@@ -5,7 +5,7 @@ use rustc_middle::{mir, ty, ty::TyCtxt};
 use std::mem::discriminant;
 
 use super::debug;
-use super::rpil::{LowRpilInst, LowRpilOp, RpilInst};
+use super::rpil::{LowRpilInst, LowRpilOp, PlaceDesc, RpilInst};
 
 struct TranslationCtxt {
     mapping: FxHashMap<LowRpilOp, LowRpilOp>,
@@ -48,11 +48,11 @@ impl TranslationCtxt {
                 let reduced_inner_op = self.reduced_rpil_op(inner_op);
                 LowRpilOp::MutRef(Box::new(reduced_inner_op))
             }
-            LowRpilOp::Place { base: inner_op, place_string } => {
+            LowRpilOp::Place { base: inner_op, place_desc } => {
                 let reduced_inner_op = self.reduced_rpil_op(inner_op);
                 LowRpilOp::Place {
                     base: Box::new(reduced_inner_op),
-                    place_string: place_string.clone(),
+                    place_desc: place_desc.clone(),
                 }
             }
             LowRpilOp::Deref(inner_op) => {
@@ -255,14 +255,14 @@ fn translate_statement_of_assign<'tcx>(
                         base: Box::new(LowRpilOp::Place {
                             base: Box::new(LowRpilOp::Place {
                                 base: Box::new(lhs.clone()),
-                                place_string: "p0".to_owned(),
+                                place_desc: PlaceDesc::P(0),
                             }),
-                            place_string: "p0".to_owned(),
+                            place_desc: PlaceDesc::P(0),
                         }),
-                        place_string: "p0".to_owned(),
+                        place_desc: PlaceDesc::P(0),
                     };
                     let ext_place =
-                        LowRpilOp::Place { base: Box::new(lhs), place_string: "ext".to_owned() };
+                        LowRpilOp::Place { base: Box::new(lhs), place_desc: PlaceDesc::PExt };
                     trcx.push_rpil_inst(LowRpilInst::Assign {
                         lhs: ptr,
                         rhs: LowRpilOp::MutRef(Box::new(ext_place)),
@@ -301,13 +301,13 @@ fn translate_statement_of_assign_aggregate<'tcx>(
                 println!("[Aggregate] Tuple({:?})", values);
             }
             for (lidx, value) in values.iter().enumerate() {
-                handle_aggregate(trcx, lhs, value, format!("p{}", lidx));
+                handle_aggregate(trcx, lhs, value, PlaceDesc::P(lidx));
             }
         }
         mir::AggregateKind::Adt(_, variant_idx, _, _, _) => {
             println!("[Aggregate] Adt(variant_idx={:?})", variant_idx);
             for (lidx, value) in values.iter().enumerate() {
-                handle_aggregate(trcx, lhs, value, format!("v{}p{}", variant_idx.as_usize(), lidx));
+                handle_aggregate(trcx, lhs, value, PlaceDesc::VP(variant_idx.as_usize(), lidx));
             }
         }
         mir::AggregateKind::Closure(def_id, _) => {
@@ -319,7 +319,7 @@ fn translate_statement_of_assign_aggregate<'tcx>(
                 rhs: LowRpilOp::Closure { def_id },
             });
             for (lidx, value) in values.iter().enumerate() {
-                handle_aggregate(trcx, lhs, value, format!("p{}", lidx));
+                handle_aggregate(trcx, lhs, value, PlaceDesc::P(lidx));
             }
         }
         _ => {
@@ -334,9 +334,9 @@ fn handle_aggregate<'tcx>(
     trcx: &mut TranslationCtxt,
     lhs: &LowRpilOp,
     value: &mir::Operand<'tcx>,
-    place_string: String,
+    place_desc: PlaceDesc,
 ) {
-    let lhs_place = LowRpilOp::Place { base: Box::new(lhs.clone()), place_string };
+    let lhs_place = LowRpilOp::Place { base: Box::new(lhs.clone()), place_desc };
     match value {
         mir::Operand::Copy(rplace) => {
             let rhs = LowRpilOp::from_mir_place(rplace, trcx.depth);
