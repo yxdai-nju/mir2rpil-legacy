@@ -42,6 +42,18 @@ impl LowRpilOp {
             _ => None,
         }
     }
+
+    pub fn depth(&self) -> usize {
+        match self {
+            LowRpilOp::Var { depth, .. } => *depth,
+            LowRpilOp::Place { base: op, .. }
+            | LowRpilOp::Ref(op)
+            | LowRpilOp::MutRef(op)
+            | LowRpilOp::Deref(op)
+            | LowRpilOp::Move(op) => op.depth(),
+            LowRpilOp::Closure { .. } => 0,
+        }
+    }
 }
 
 impl fmt::Debug for LowRpilOp {
