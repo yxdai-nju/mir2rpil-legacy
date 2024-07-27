@@ -1,15 +1,14 @@
 use rustc_data_structures::fx::FxHashMap;
-use rustc_hir::def_id::DefId;
 use rustc_middle::mir;
 
-use super::roadmap::Roadmap;
+use super::path::ExecutionPath;
 use super::rpil::{LowRpilInst, LowRpilOp, PlaceDesc, RpilInst};
 
 pub struct TranslationCtxt {
-    mapping: FxHashMap<LowRpilOp, LowRpilOp>,
+    pub mapping: FxHashMap<LowRpilOp, LowRpilOp>,
     pub depth: usize,
     pub rpil_insts: Vec<RpilInst>,
-    roadmap: Roadmap,
+    pub path: ExecutionPath,
 }
 
 impl TranslationCtxt {
@@ -18,7 +17,7 @@ impl TranslationCtxt {
             mapping: FxHashMap::with_hasher(Default::default()),
             depth: 0,
             rpil_insts: vec![],
-            roadmap: Roadmap::new(),
+            path: ExecutionPath::new(),
         }
     }
 
@@ -174,8 +173,14 @@ impl TranslationCtxt {
         println!("[Context] {:?}", self.mapping);
     }
 
-    pub fn enter_function(&mut self, _def_id: DefId) {
+    pub fn initialize_with_function(&mut self, func_name: String) {
+        self.depth = 0;
+        self.path.push_function(func_name);
+    }
+
+    pub fn enter_function(&mut self, func_name: String) {
         self.depth += 1;
+        self.path.push_function(func_name);
     }
 
     pub fn leave_function(&mut self) {
@@ -207,6 +212,7 @@ impl TranslationCtxt {
             self.mapping.remove(&k);
         }
         println!("[Context] {:?}", self.mapping);
+        self.path.pop_function();
         self.depth -= 1;
     }
 }

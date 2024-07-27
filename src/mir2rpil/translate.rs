@@ -1,3 +1,4 @@
+use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::graph::StartNode;
 use rustc_hir::def_id::DefId;
 use rustc_middle::{mir, ty, ty::TyCtxt};
@@ -7,8 +8,6 @@ use std::mem::discriminant;
 use super::context::TranslationCtxt;
 use super::debug;
 use super::rpil::{LowRpilInst, LowRpilOp, PlaceDesc, RpilInst};
-
-type NextBB = Option<Vec<mir::BasicBlock>>;
 
 pub fn translate_func_def<'tcx>(tcx: TyCtxt<'tcx>, func_id: DefId) -> Vec<RpilInst> {
     debug::log_func_mir(tcx, func_id);
@@ -23,13 +22,13 @@ pub fn translate_func_def<'tcx>(tcx: TyCtxt<'tcx>, func_id: DefId) -> Vec<RpilIn
 
     // Initialize MIR->RPIL translation context
     let mut trcx = TranslationCtxt::new();
+    trcx.initialize_with_function(fn_name.clone());
 
-    let mir_body = tcx.optimized_mir(func_id);
-
-    // todo!("support jumping between BBs according to terminator targets");
-    let bb0 = mir_body.basic_blocks.start_node();
-    let bb0_data = mir_body.basic_blocks.get(bb0).unwrap();
-    let _ = translate_basic_block(tcx, &mut trcx, bb0, bb0_data);
+    let func_body = tcx.optimized_mir(func_id);
+    let bb0 = func_body.basic_blocks.start_node();
+    let mut contexts = vec![];
+    translate_basic_block(tcx, &mut trcx, func_body, bb0, &mut contexts);
+    println!("Number of variants: {}", contexts.len());
 
     println!("===== Leaving function `{}` {} =====", fn_name, fn_id);
     trcx.rpil_insts
@@ -38,40 +37,65 @@ pub fn translate_func_def<'tcx>(tcx: TyCtxt<'tcx>, func_id: DefId) -> Vec<RpilIn
 fn translate_func_call<'tcx>(tcx: TyCtxt<'tcx>, trcx: &mut TranslationCtxt, func_id: DefId) {
     debug::log_func_mir(tcx, func_id);
 
-    trcx.enter_function(func_id);
     let fn_name = tcx.def_path_str(func_id);
     let fn_id = func_id.index.as_u32();
-    println!("===== Entered function `{}` {} =====", fn_name, fn_id);
     if !tcx.is_mir_available(func_id) {
         println!("    (empty)");
         return;
     }
 
-    let mir_body = tcx.optimized_mir(func_id);
+    println!("===== Entered function `{}` {} =====", fn_name, fn_id);
+    trcx.enter_function(fn_name.clone());
 
-    // todo!("support jumping between BBs according to terminator targets")
-    let bb0 = mir_body.basic_blocks.start_node();
-    let bb0_data = mir_body.basic_blocks.get(bb0).unwrap();
-    let _ = translate_basic_block(tcx, trcx, bb0, bb0_data);
+    let func_body = tcx.optimized_mir(func_id);
+    let bb0 = func_body.basic_blocks.start_node();
+    let mut contexts = vec![];
+    translate_basic_block(tcx, trcx, func_body, bb0, &mut contexts);
+    println!("Number of variants: {}", contexts.len());
+    // todo!("support branching the translate context with variants");
 
-    println!("===== Leaving function `{}` {} =====", fn_name, fn_id);
     trcx.leave_function();
+    println!("===== Leaving function `{}` {} =====", fn_name, fn_id);
+    println!("{:?}", trcx.path);
 }
 
 fn translate_basic_block<'tcx>(
     tcx: TyCtxt<'tcx>,
     trcx: &mut TranslationCtxt,
-    _bb: mir::BasicBlock,
-    bb_data: &mir::BasicBlockData<'tcx>,
-) -> NextBB {
-    // println!("{:?} of `{}` {}:", bb, fn_name, fn_id);
+    func_body: &mir::Body<'tcx>,
+    bb: mir::BasicBlock,
+    contexts: &mut Vec<FxHashMap<LowRpilOp, LowRpilOp>>,
+) {
+    trcx.path.push_bb(bb);
+    println!("{:?}", trcx.path);
+
+    let bb_data = func_body.basic_blocks.get(bb).unwrap();
     for statement in &bb_data.statements {
         translate_statement(tcx, trcx, statement);
     }
     let terminator = bb_data.terminator();
     let next_bb = translate_terminator(tcx, trcx, terminator);
-    println!("---");
-    next_bb
+
+    match next_bb {
+        Some(ref next_bbs) => {
+            println!("Next: {:?}", next_bbs);
+            println!("-----");
+            let original_context = trcx.mapping.clone();
+            for bb in next_bbs.iter().copied() {
+                if !trcx.path.is_bb_visited(bb) {
+                    translate_basic_block(tcx, trcx, func_body, bb, contexts);
+                    trcx.mapping = original_context.clone();
+                }
+            }
+        }
+        None => {
+            println!("Next: return");
+            println!("-----");
+            contexts.push(trcx.mapping.clone());
+        }
+    };
+
+    trcx.path.pop_bb();
 }
 
 fn translate_statement<'tcx>(
@@ -320,7 +344,7 @@ fn translate_terminator<'tcx>(
     tcx: TyCtxt<'tcx>,
     trcx: &mut TranslationCtxt,
     terminator: &mir::Terminator<'tcx>,
-) -> NextBB {
+) -> Option<Vec<mir::BasicBlock>> {
     let terminator = &terminator.kind;
     match terminator {
         mir::TerminatorKind::Call { ref func, ref args, destination, target, .. } => {
@@ -358,30 +382,20 @@ fn translate_terminator<'tcx>(
                     translate_func_call(tcx, trcx, called_func_id);
                 }
             }
-
-            println!("Next: {:?}", target);
             Some(target.map_or(vec![], |bb| vec![bb]))
         }
         mir::TerminatorKind::Goto { target }
         | mir::TerminatorKind::Assert { target, .. }
-        | mir::TerminatorKind::Drop { target, .. } => {
-            println!("Next: {:?}", target);
-            Some(vec![*target])
-        }
+        | mir::TerminatorKind::Drop { target, .. } => Some(vec![*target]),
         mir::TerminatorKind::SwitchInt { discr, ref targets, .. } => {
             println!("[MIR Term] SwitchInt({:?})", discr);
-            println!("Next: {:?}", targets.all_targets());
             Some(targets.all_targets().into())
         }
         mir::TerminatorKind::Return => {
-            println!("Next: return");
             trcx.push_rpil_inst(LowRpilInst::Return);
             None
         }
-        mir::TerminatorKind::UnwindResume | mir::TerminatorKind::Unreachable => {
-            println!("Next: !");
-            Some(vec![])
-        }
+        mir::TerminatorKind::UnwindResume | mir::TerminatorKind::Unreachable => Some(vec![]),
         _ => {
             let x = discriminant(terminator);
             println!("[MIR Term-{:?}] Unknown `{:?}`", x, terminator);
