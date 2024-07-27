@@ -21,26 +21,53 @@ impl TranslationCtxt {
     fn push_rpil_inst(&mut self, inst: LowRpilInst) {
         println!("[Low-RPIL] {:?}", inst);
         match inst {
-            LowRpilInst::Assign { lhs, rhs } => {
+            LowRpilInst::Assign { lhs, rhs, moves } => {
                 let (lhs, rhs) = (self.reduced_rpil_op(&lhs), self.reduced_rpil_op(&rhs));
                 println!(
                     "[Reduced Low-RPIL] {:?}",
-                    LowRpilInst::Assign { lhs: lhs.clone(), rhs: rhs.clone() }
+                    LowRpilInst::Assign { lhs: lhs.clone(), rhs: rhs.clone(), moves }
                 );
-                self.mapping.insert(lhs, rhs);
-                // todo!("also insert bound mappings");
+
+                // Insert mapping for the directly assigned place
+                let mut to_be_inserted = vec![];
+                to_be_inserted.push((lhs.clone(), rhs.clone()));
+
+                // Insert mappings for contagious places
+                //
+                // Example: If A.p0->x and A.p1->y, the assignment `B = A;` will
+                //          insert B.p0->x and B.p1->y to the context
+                for (key, val) in self.mapping.iter() {
+                    let replaced_key = key.replace_origin(&rhs, &lhs);
+                    let replaced_val = val.replace_origin(&rhs, &lhs);
+                    if replaced_key.is_some() || replaced_val.is_some() {
+                        to_be_inserted.push((
+                            replaced_key.unwrap_or(key.clone()),
+                            replaced_val.unwrap_or(val.clone()),
+                        ));
+                    }
+                }
+
+                println!("Insert: {:?}", to_be_inserted);
+                for (k, v) in to_be_inserted {
+                    self.mapping.insert(k, v);
+                }
                 println!("[Context] {:?}", self.mapping);
             }
             LowRpilInst::Return => {}
         };
     }
 
-    fn reduced_rpil_op(&mut self, op: &LowRpilOp) -> LowRpilOp {
+    fn reduced_rpil_op_nonstructural(&self, op: &LowRpilOp) -> LowRpilOp {
+        if let Some(mapped_op) = self.mapping.get(op) {
+            self.reduced_rpil_op_nonstructural(mapped_op)
+        } else {
+            op.clone()
+        }
+    }
+
+    fn reduced_rpil_op(&self, op: &LowRpilOp) -> LowRpilOp {
         let op = match op {
-            LowRpilOp::Var { .. }
-            | LowRpilOp::Closure { .. }
-            | LowRpilOp::Ref(_)
-            | LowRpilOp::MutRef(_) => op.clone(),
+            LowRpilOp::Var { .. } | LowRpilOp::Closure { .. } => op.clone(),
             LowRpilOp::Place { base: inner_op, place_desc } => {
                 let reduced_inner_op = self.reduced_rpil_op(inner_op);
                 LowRpilOp::Place {
@@ -48,6 +75,11 @@ impl TranslationCtxt {
                     place_desc: place_desc.clone(),
                 }
             }
+            LowRpilOp::Ref(refed_op) | LowRpilOp::MutRef(refed_op) =>
+                match *refed_op.clone() {
+                    LowRpilOp::Deref(derefed_op) => *derefed_op,
+                    _ => op.clone(),
+                },
             LowRpilOp::Deref(inner_op) => {
                 let reduced_inner_op = self.reduced_rpil_op(inner_op);
                 match reduced_inner_op {
@@ -55,11 +87,6 @@ impl TranslationCtxt {
                         self.reduced_rpil_op(&derefed_op),
                     _ => LowRpilOp::Deref(Box::new(reduced_inner_op)),
                 }
-            }
-            LowRpilOp::Move(inner_op) => {
-                let reduced_inner_op = self.reduced_rpil_op(inner_op);
-                self.mapping.remove(inner_op);
-                reduced_inner_op
             }
         };
         if let Some(mapped_op) = self.mapping.get(&op).cloned() {
@@ -74,7 +101,6 @@ impl TranslationCtxt {
         ret_op: &LowRpilOp,
         args: &[mir::Operand<'tcx>],
     ) {
-        let mut to_be_removed = vec![];
         let mut to_be_inserted = vec![];
 
         // Map return place
@@ -89,18 +115,13 @@ impl TranslationCtxt {
                     let arg_op = LowRpilOp::from_mir_place(arg_place, self.depth);
                     let mapped_arg = LowRpilOp::Var { depth: self.depth + 1, index: idx + 1 };
                     let val = self.mapping.get(&arg_op).unwrap();
-                    to_be_removed.push(arg_op);
                     to_be_inserted.push((mapped_arg, val.clone()));
                 }
                 mir::Operand::Constant(_) => {}
             }
         }
 
-        println!("Remove: {:?}", to_be_removed);
         println!("Insert: {:?}", to_be_inserted);
-        for k in to_be_removed {
-            self.mapping.remove(&k);
-        }
         for (k, v) in to_be_inserted {
             self.mapping.insert(k, v);
         }
@@ -113,7 +134,6 @@ impl TranslationCtxt {
         closure_op: &LowRpilOp,
         args_op: &mir::Operand<'tcx>,
     ) {
-        let mut to_be_removed = vec![];
         let mut to_be_inserted = vec![];
 
         // Map return place
@@ -137,18 +157,13 @@ impl TranslationCtxt {
                     };
                     let mapped_arg =
                         LowRpilOp::Var { depth: self.depth + 1, index: place_index + 2 };
-                    to_be_removed.push(key.clone());
                     to_be_inserted.push((mapped_arg, val.clone()));
                 }
             }
             _ => unreachable!(),
         };
 
-        println!("Remove: {:?}", to_be_removed);
         println!("Insert: {:?}", to_be_inserted);
-        for k in to_be_removed {
-            self.mapping.remove(&k);
-        }
         for (k, v) in to_be_inserted {
             self.mapping.insert(k, v);
         }
@@ -160,8 +175,25 @@ impl TranslationCtxt {
     }
 
     fn leave_function(&mut self) {
-        // Remove mappings for current function scope
+        let mut to_be_inserted = vec![];
         let mut to_be_removed = vec![];
+
+        // Insert mappings that are valid out of the current function scope, by
+        // following through indirections
+        //
+        // Example: If 0_1->1_2 and 1_2->0_3, insert 0_1->0_3 to the context
+        for (key, val) in self.mapping.iter() {
+            let reduced_val = self.reduced_rpil_op_nonstructural(val);
+            if key.depth() < self.depth && reduced_val.depth() < self.depth {
+                to_be_inserted.push((key.clone(), reduced_val));
+            }
+        }
+        println!("Insert: {:?}", to_be_inserted);
+        for (k, v) in to_be_inserted {
+            self.mapping.insert(k, v);
+        }
+
+        // Remove mappings that are valid only for the current function scope
         for (key, val) in self.mapping.iter() {
             if key.depth() == self.depth || val.depth() == self.depth {
                 to_be_removed.push(key.clone());
@@ -291,12 +323,11 @@ fn translate_statement_of_assign<'tcx>(
             match operand {
                 mir::Operand::Copy(rplace) => {
                     let rhs = LowRpilOp::from_mir_place(rplace, trcx.depth);
-                    trcx.push_rpil_inst(LowRpilInst::Assign { lhs, rhs })
+                    trcx.push_rpil_inst(LowRpilInst::Assign { lhs, rhs, moves: false });
                 }
                 mir::Operand::Move(rplace) => {
                     let rhs = LowRpilOp::from_mir_place(rplace, trcx.depth);
-                    let moved_rhs = LowRpilOp::Move(Box::new(rhs));
-                    trcx.push_rpil_inst(LowRpilInst::Assign { lhs, rhs: moved_rhs });
+                    trcx.push_rpil_inst(LowRpilInst::Assign { lhs, rhs, moves: true });
                 }
                 mir::Operand::Constant(_) => {}
             }
@@ -311,12 +342,20 @@ fn translate_statement_of_assign<'tcx>(
                 mir::BorrowKind::Shared => {
                     println!("[Rvalue] Ref(Shared, {:?})", rplace);
                     let borrowed_rhs = LowRpilOp::Ref(Box::new(rhs));
-                    trcx.push_rpil_inst(LowRpilInst::Assign { lhs, rhs: borrowed_rhs });
+                    trcx.push_rpil_inst(LowRpilInst::Assign {
+                        lhs,
+                        rhs: borrowed_rhs,
+                        moves: false,
+                    });
                 }
                 mir::BorrowKind::Mut { kind } => {
                     println!("[Rvalue] Ref(Mut({:?}), {:?})", kind, rplace);
                     let borrowed_rhs = LowRpilOp::MutRef(Box::new(rhs));
-                    trcx.push_rpil_inst(LowRpilInst::Assign { lhs, rhs: borrowed_rhs });
+                    trcx.push_rpil_inst(LowRpilInst::Assign {
+                        lhs,
+                        rhs: borrowed_rhs,
+                        moves: false,
+                    });
                 }
                 mir::BorrowKind::Fake(kind) => {
                     println!("[Rvalue] Ref(Fake({:?}), {:?})", kind, rplace);
@@ -327,7 +366,7 @@ fn translate_statement_of_assign<'tcx>(
         mir::Rvalue::CopyForDeref(rplace) => {
             println!("[Rvalue] CopyForDeref({:?})", rplace);
             let rhs = LowRpilOp::from_mir_place(rplace, trcx.depth);
-            trcx.push_rpil_inst(LowRpilInst::Assign { lhs, rhs });
+            trcx.push_rpil_inst(LowRpilInst::Assign { lhs, rhs, moves: false });
         }
         mir::Rvalue::ShallowInitBox(op, ty) => {
             println!("[Rvalue] ShallowInitBox({:?}, {:?})", op, ty);
@@ -343,9 +382,7 @@ fn translate_statement_of_assign<'tcx>(
                     // as lhs.ext.
                     //
                     // Therefore, we omit the ptr argument and interpret this
-                    // operation as:
-                    //
-                    // lhs.p0.p0.p0 = &mut lhs.ext.
+                    // operation as: `lhs.p0.p0.p0 = &mut lhs.ext;`.
                     let ptr = LowRpilOp::Place {
                         base: Box::new(LowRpilOp::Place {
                             base: Box::new(LowRpilOp::Place {
@@ -361,6 +398,7 @@ fn translate_statement_of_assign<'tcx>(
                     trcx.push_rpil_inst(LowRpilInst::Assign {
                         lhs: ptr,
                         rhs: LowRpilOp::MutRef(Box::new(ext_place)),
+                        moves: false,
                     });
                 }
                 mir::Operand::Constant(_) => {}
@@ -412,6 +450,7 @@ fn translate_statement_of_assign_aggregate<'tcx>(
             trcx.push_rpil_inst(LowRpilInst::Assign {
                 lhs: lhs.clone(),
                 rhs: LowRpilOp::Closure { def_id },
+                moves: false,
             });
             for (lidx, value) in values.iter().enumerate() {
                 handle_aggregate(trcx, lhs, value, PlaceDesc::P(lidx));
@@ -435,12 +474,11 @@ fn handle_aggregate<'tcx>(
     match value {
         mir::Operand::Copy(rplace) => {
             let rhs = LowRpilOp::from_mir_place(rplace, trcx.depth);
-            trcx.push_rpil_inst(LowRpilInst::Assign { lhs: lhs_place, rhs });
+            trcx.push_rpil_inst(LowRpilInst::Assign { lhs: lhs_place, rhs, moves: false });
         }
         mir::Operand::Move(rplace) => {
             let rhs = LowRpilOp::from_mir_place(rplace, trcx.depth);
-            let moved_rhs = LowRpilOp::Move(Box::new(rhs));
-            trcx.push_rpil_inst(LowRpilInst::Assign { lhs: lhs_place, rhs: moved_rhs });
+            trcx.push_rpil_inst(LowRpilInst::Assign { lhs: lhs_place, rhs, moves: true });
         }
         mir::Operand::Constant(_) => {}
     }
@@ -514,7 +552,6 @@ fn translate_terminator<'tcx>(
                         None => unreachable!(),
                     }
                 } else {
-                    // todo!("add args mapping before translating a function call");
                     trcx.prepare_args_mapping_for_function_call(&ret_op, &args);
                     translate_func_call(tcx, trcx, called_func_id);
                 }

@@ -12,7 +12,6 @@ pub enum LowRpilOp {
     Ref(Box<LowRpilOp>),
     MutRef(Box<LowRpilOp>),
     Deref(Box<LowRpilOp>),
-    Move(Box<LowRpilOp>),
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -44,14 +43,39 @@ impl LowRpilOp {
     }
 
     pub fn depth(&self) -> usize {
+        use LowRpilOp::*;
         match self {
-            LowRpilOp::Var { depth, .. } => *depth,
-            LowRpilOp::Place { base: op, .. }
-            | LowRpilOp::Ref(op)
-            | LowRpilOp::MutRef(op)
-            | LowRpilOp::Deref(op)
-            | LowRpilOp::Move(op) => op.depth(),
-            LowRpilOp::Closure { .. } => 0,
+            Var { depth, .. } => *depth,
+            Place { base: op, .. } | Ref(op) | MutRef(op) | Deref(op) => op.depth(),
+            Closure { .. } => 0,
+        }
+    }
+
+    pub fn origin(&self) -> LowRpilOp {
+        use LowRpilOp::*;
+        match self {
+            Var { .. } | Closure { .. } => self.clone(),
+            Place { base, .. } => base.origin(),
+            Ref(op) | MutRef(op) | Deref(op) => op.origin(),
+        }
+    }
+
+    pub fn replace_origin(&self, from: &LowRpilOp, to: &LowRpilOp) -> Option<LowRpilOp> {
+        use LowRpilOp::*;
+        if self == from {
+            return Some(to.clone());
+        }
+        match self {
+            Var { .. } | Closure { .. } => None,
+            Place { base, place_desc } =>
+                base.replace_origin(from, to).map(|replaced_base| {
+                    Place { base: Box::new(replaced_base), place_desc: place_desc.clone() }
+                }),
+            Ref(op) => op.replace_origin(from, to).map(|replaced_op| Ref(Box::new(replaced_op))),
+            MutRef(op) =>
+                op.replace_origin(from, to).map(|replaced_op| MutRef(Box::new(replaced_op))),
+            Deref(op) =>
+                op.replace_origin(from, to).map(|replaced_op| Deref(Box::new(replaced_op))),
         }
     }
 }
@@ -66,13 +90,12 @@ impl fmt::Debug for LowRpilOp {
             Ref(op) => write!(f, "& {:?}", op),
             MutRef(op) => write!(f, "&mut {:?}", op),
             Deref(op) => write!(f, "({:?})*", op),
-            Move(op) => write!(f, "move {:?}", op),
         }
     }
 }
 
 pub enum LowRpilInst {
-    Assign { lhs: LowRpilOp, rhs: LowRpilOp },
+    Assign { lhs: LowRpilOp, rhs: LowRpilOp, moves: bool },
     Return,
 }
 
@@ -80,7 +103,12 @@ impl fmt::Debug for LowRpilInst {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use LowRpilInst::*;
         match self {
-            Assign { lhs, rhs } => write!(f, "{:?} = {:?};", lhs, rhs),
+            Assign { lhs, rhs, moves } =>
+                if *moves {
+                    write!(f, "{:?} = move {:?};", lhs, rhs)
+                } else {
+                    write!(f, "{:?} = {:?};", lhs, rhs)
+                },
             Return => write!(f, "return;"),
         }
     }
