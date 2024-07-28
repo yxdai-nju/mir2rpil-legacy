@@ -3,6 +3,7 @@ use rustc_middle::mir;
 
 use std::fmt;
 
+#[derive(Clone)]
 pub struct ExecutionPath {
     call_stack: Vec<String>,
     bb_trace: Vec<(usize, usize)>,

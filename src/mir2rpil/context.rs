@@ -2,12 +2,12 @@ use rustc_data_structures::fx::FxHashMap;
 use rustc_middle::mir;
 
 use super::path::ExecutionPath;
-use super::rpil::{LowRpilInst, LowRpilOp, PlaceDesc, RpilInst};
+use super::rpil::{LowRpilInst, LowRpilOp, PlaceDesc};
 
+#[derive(Clone)]
 pub struct TranslationCtxt {
     pub mapping: FxHashMap<LowRpilOp, LowRpilOp>,
     pub depth: usize,
-    pub rpil_insts: Vec<RpilInst>,
     pub path: ExecutionPath,
 }
 
@@ -16,7 +16,6 @@ impl TranslationCtxt {
         Self {
             mapping: FxHashMap::with_hasher(Default::default()),
             depth: 0,
-            rpil_insts: vec![],
             path: ExecutionPath::new(),
         }
     }

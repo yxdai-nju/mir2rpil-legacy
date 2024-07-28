@@ -31,7 +31,8 @@ pub fn translate_func_def<'tcx>(tcx: TyCtxt<'tcx>, func_id: DefId) -> Vec<RpilIn
     println!("Number of variants: {}", contexts.len());
 
     println!("===== Leaving function `{}` {} =====", fn_name, fn_id);
-    trcx.rpil_insts
+    // todo!("return real RPIL instructions");
+    vec![]
 }
 
 fn translate_func_call<'tcx>(tcx: TyCtxt<'tcx>, trcx: &mut TranslationCtxt, func_id: DefId) {
@@ -51,7 +52,13 @@ fn translate_func_call<'tcx>(tcx: TyCtxt<'tcx>, trcx: &mut TranslationCtxt, func
     let bb0 = func_body.basic_blocks.start_node();
     let mut contexts = vec![];
     translate_basic_block(tcx, trcx, func_body, bb0, &mut contexts);
-    println!("Number of variants: {}", contexts.len());
+    let variants = contexts.iter().map(|mapping| {
+        let mut trcx_variant = trcx.clone();
+        trcx_variant.mapping = mapping.clone();
+        trcx_variant
+    });
+    println!("Number of variants: {}", variants.len());
+    *trcx = variants.last().unwrap().clone();
     // todo!("support branching the translate context with variants");
 
     trcx.leave_function();
@@ -64,7 +71,7 @@ fn translate_basic_block<'tcx>(
     trcx: &mut TranslationCtxt,
     func_body: &mir::Body<'tcx>,
     bb: mir::BasicBlock,
-    contexts: &mut Vec<FxHashMap<LowRpilOp, LowRpilOp>>,
+    mappings: &mut Vec<FxHashMap<LowRpilOp, LowRpilOp>>,
 ) {
     trcx.path.push_bb(bb);
     println!("{:?}", trcx.path);
@@ -80,18 +87,18 @@ fn translate_basic_block<'tcx>(
         Some(ref next_bbs) => {
             println!("Next: {:?}", next_bbs);
             println!("-----");
-            let original_context = trcx.mapping.clone();
+            let original_mapping = trcx.mapping.clone();
             for bb in next_bbs.iter().copied() {
                 if !trcx.path.is_bb_visited(bb) {
-                    translate_basic_block(tcx, trcx, func_body, bb, contexts);
-                    trcx.mapping = original_context.clone();
+                    translate_basic_block(tcx, trcx, func_body, bb, mappings);
+                    trcx.mapping = original_mapping.clone();
                 }
             }
         }
         None => {
             println!("Next: return");
             println!("-----");
-            contexts.push(trcx.mapping.clone());
+            mappings.push(trcx.mapping.clone());
         }
     };
 
@@ -208,7 +215,7 @@ fn translate_statement_of_assign<'tcx>(
                     // as lhs.ext.
                     //
                     // Therefore, we omit the ptr argument and interpret this
-                    // operation as: `lhs.p0.p0.p0 = &mut lhs.ext;`.
+                    // operation as: lhs.p0.p0.p0 = &mut lhs.ext;
                     let ptr = LowRpilOp::Place {
                         base: Box::new(LowRpilOp::Place {
                             base: Box::new(LowRpilOp::Place {
