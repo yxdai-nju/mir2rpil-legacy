@@ -1,4 +1,3 @@
-use rustc_data_structures::fx::FxHashMap;
 use rustc_data_structures::graph::StartNode;
 use rustc_hir::def_id::DefId;
 use rustc_middle::{mir, ty, ty::TyCtxt};
@@ -9,61 +8,53 @@ use super::context::TranslationCtxt;
 use super::debug;
 use super::rpil::{LowRpilInst, LowRpilOp, PlaceDesc, RpilInst};
 
-pub fn translate_func_def<'tcx>(tcx: TyCtxt<'tcx>, func_id: DefId) -> Vec<RpilInst> {
-    debug::log_func_mir(tcx, func_id);
+pub fn translate_function_def<'tcx>(tcx: TyCtxt<'tcx>, func_def_id: DefId) -> Vec<Vec<RpilInst>> {
+    debug::log_func_mir(tcx, func_def_id);
 
-    let fn_name = tcx.def_path_str(func_id);
-    let fn_id = func_id.index.as_u32();
-    println!("===== Entered function `{}` {} =====", fn_name, fn_id);
-    if !tcx.is_mir_available(func_id) {
+    let func_name = tcx.def_path_str(func_def_id);
+    let func_idx = func_def_id.index.as_u32();
+    if !tcx.is_mir_available(func_def_id) {
         println!("    (empty)");
-        return vec![];
+        return vec![vec![]];
     }
 
-    // Initialize MIR->RPIL translation context
-    let mut trcx = TranslationCtxt::new();
-    trcx.initialize_with_function(fn_name.clone());
+    // Create an MIR->RPIL translation context
+    let mut trcx = TranslationCtxt::new(func_name.as_str());
+    println!("===== Entered function `{}` {} =====", func_name, func_idx);
 
-    let func_body = tcx.optimized_mir(func_id);
+    let func_body = tcx.optimized_mir(func_def_id);
     let bb0 = func_body.basic_blocks.start_node();
-    let mut contexts = vec![];
-    translate_basic_block(tcx, &mut trcx, func_body, bb0, &mut contexts);
-    println!("Number of variants: {}", contexts.len());
+    translate_basic_block(tcx, &mut trcx, func_body, bb0);
+    // println!("Number of variants: {}", contexts.len());
 
-    println!("===== Leaving function `{}` {} =====", fn_name, fn_id);
-    // todo!("return real RPIL instructions");
-    vec![]
+    println!("===== Leaving function `{}` {} =====", func_name, func_idx);
+
+    // todo!("return real results");
+    vec![vec![]]
 }
 
-fn translate_func_call<'tcx>(tcx: TyCtxt<'tcx>, trcx: &mut TranslationCtxt, func_id: DefId) {
-    debug::log_func_mir(tcx, func_id);
+fn translate_function_call<'tcx>(tcx: TyCtxt<'tcx>, trcx: &mut TranslationCtxt) {
+    trcx.apply_to_each_variant(|trcx_variant| {
+        let def_id = trcx_variant.function_to_be_called.unwrap();
+        debug::log_func_mir(tcx, def_id);
 
-    let fn_name = tcx.def_path_str(func_id);
-    let fn_id = func_id.index.as_u32();
-    if !tcx.is_mir_available(func_id) {
-        println!("    (empty)");
-        return;
-    }
+        let func_name = tcx.def_path_str(def_id);
+        let func_idx = def_id.index.as_u32();
+        if !tcx.is_mir_available(def_id) {
+            println!("    (empty)");
+            return;
+        }
 
-    println!("===== Entered function `{}` {} =====", fn_name, fn_id);
-    trcx.enter_function(fn_name.clone());
+        trcx_variant.enter_function(func_name.as_str());
+        println!("===== Entered function `{}` {} =====", func_name, func_idx);
 
-    let func_body = tcx.optimized_mir(func_id);
-    let bb0 = func_body.basic_blocks.start_node();
-    let mut contexts = vec![];
-    translate_basic_block(tcx, trcx, func_body, bb0, &mut contexts);
-    let variants = contexts.iter().map(|mapping| {
-        let mut trcx_variant = trcx.clone();
-        trcx_variant.mapping = mapping.clone();
-        trcx_variant
+        let func_body = tcx.optimized_mir(def_id);
+        let bb0 = func_body.basic_blocks.start_node();
+        translate_basic_block(tcx, trcx_variant, func_body, bb0);
+
+        trcx_variant.leave_function();
+        println!("===== Leaving function `{}` {} =====", func_name, func_idx);
     });
-    println!("Number of variants: {}", variants.len());
-    *trcx = variants.last().unwrap().clone();
-    // todo!("support branching the translate context with variants");
-
-    trcx.leave_function();
-    println!("===== Leaving function `{}` {} =====", fn_name, fn_id);
-    println!("{:?}", trcx.path);
 }
 
 fn translate_basic_block<'tcx>(
@@ -71,9 +62,8 @@ fn translate_basic_block<'tcx>(
     trcx: &mut TranslationCtxt,
     func_body: &mir::Body<'tcx>,
     bb: mir::BasicBlock,
-    mappings: &mut Vec<FxHashMap<LowRpilOp, LowRpilOp>>,
 ) {
-    trcx.path.push_bb(bb);
+    trcx.enter_basic_block(bb);
     println!("{:?}", trcx.path);
 
     let bb_data = func_body.basic_blocks.get(bb).unwrap();
@@ -87,22 +77,23 @@ fn translate_basic_block<'tcx>(
         Some(ref next_bbs) => {
             println!("Next: {:?}", next_bbs);
             println!("-----");
-            let original_mapping = trcx.mapping.clone();
+            let mappings_snapshot = trcx.mappings.clone();
             for bb in next_bbs.iter().copied() {
                 if !trcx.path.is_bb_visited(bb) {
-                    translate_basic_block(tcx, trcx, func_body, bb, mappings);
-                    trcx.mapping = original_mapping.clone();
+                    translate_basic_block(tcx, trcx, func_body, bb);
+                    trcx.mappings = mappings_snapshot.clone();
                 }
             }
+            trcx.merge_variants();
         }
         None => {
             println!("Next: return");
             println!("-----");
-            mappings.push(trcx.mapping.clone());
+            trcx.add_variant();
         }
     };
 
-    trcx.path.pop_bb();
+    trcx.leave_basic_block();
 }
 
 fn translate_statement<'tcx>(
@@ -317,7 +308,22 @@ fn handle_aggregate<'tcx>(
     }
 }
 
-fn def_id_of_func_operand<'tcx>(func: &mir::Operand<'tcx>) -> DefId {
+fn is_function_excluded<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> bool {
+    let excluded_from_translation: rustc_data_structures::fx::FxHashSet<&str> =
+        ["alloc::alloc::exchange_malloc"].iter().cloned().collect();
+    let def_path = tcx.def_path_str(def_id);
+    excluded_from_translation.contains(def_path.as_str())
+}
+
+fn is_function_fn_trait_shim<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> bool {
+    let def_path = tcx.def_path_str(def_id);
+    def_path.contains("::call")
+        && (def_path.contains("std::ops::Fn")
+            || def_path.contains("std::ops::FnMut")
+            || def_path.contains("std::ops::FnOnce"))
+}
+
+fn get_def_id_from_fndef_operand<'tcx>(func: &mir::Operand<'tcx>) -> DefId {
     match func {
         mir::Operand::Constant(operand) =>
             match operand.const_ {
@@ -332,21 +338,6 @@ fn def_id_of_func_operand<'tcx>(func: &mir::Operand<'tcx>) -> DefId {
     }
 }
 
-fn is_function_excluded<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> bool {
-    let excluded_from_translation: rustc_data_structures::fx::FxHashSet<&str> =
-        ["alloc::alloc::exchange_malloc"].iter().cloned().collect();
-    let def_path = tcx.def_path_str(def_id);
-    excluded_from_translation.contains(def_path.as_str())
-}
-
-fn is_fn_trait_shim<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> bool {
-    let def_path = tcx.def_path_str(def_id);
-    def_path.contains("::call")
-        && (def_path.contains("std::ops::Fn")
-            || def_path.contains("std::ops::FnMut")
-            || def_path.contains("std::ops::FnOnce"))
-}
-
 fn translate_terminator<'tcx>(
     tcx: TyCtxt<'tcx>,
     trcx: &mut TranslationCtxt,
@@ -354,39 +345,28 @@ fn translate_terminator<'tcx>(
 ) -> Option<Vec<mir::BasicBlock>> {
     let terminator = &terminator.kind;
     match terminator {
-        mir::TerminatorKind::Call { ref func, ref args, destination, target, .. } => {
-            let args: Vec<_> = args.iter().map(|s| s.node.clone()).collect();
-            println!("[MIR Term] Assign(({:?}, {:?}{:?}))", destination, func, args);
+        mir::TerminatorKind::Call { func, args, destination, target, .. } => {
+            let arg_list: Vec<_> = args.iter().map(|s| s.node.clone()).collect();
+            println!("[MIR Term] Assign(({:?}, {:?}{:?}))", destination, func, arg_list);
             let ret_op = LowRpilOp::from_mir_place(destination, trcx.depth);
-            let called_func_id = def_id_of_func_operand(func);
-            println!("Function Name: {}", tcx.def_path_str(called_func_id));
-            println!("Function Args: {:?}", args);
+            let func_def_id = get_def_id_from_fndef_operand(func);
+            println!("Function Name: {}", tcx.def_path_str(func_def_id));
+            println!("Function Args: {:?}", arg_list);
 
-            if !is_function_excluded(tcx, called_func_id) {
-                if is_fn_trait_shim(tcx, called_func_id) {
-                    assert_eq!(args.len(), 2);
-                    let closure_place = match args.first().unwrap() {
+            if !is_function_excluded(tcx, func_def_id) {
+                if is_function_fn_trait_shim(tcx, func_def_id) {
+                    assert_eq!(arg_list.len(), 2);
+                    let closure_place = match arg_list.first().unwrap() {
                         mir::Operand::Move(place) => place,
                         _ => unreachable!(),
                     };
                     let closure_op = LowRpilOp::from_mir_place(closure_place, trcx.depth);
-                    let closure_args_op = args.last().unwrap();
-                    match trcx.reduced_rpil_op(&closure_op).get_inner_closure() {
-                        Some(closure_id) => {
-                            println!("Closure Name: {}", tcx.def_path_str(closure_id));
-                            println!("Closure Args: {:?}", closure_args_op);
-                            trcx.prepare_args_mapping_for_closure_call(
-                                &ret_op,
-                                &closure_op,
-                                closure_args_op,
-                            );
-                            translate_func_call(tcx, trcx, closure_id);
-                        }
-                        None => unreachable!(),
-                    }
+                    let closure_args_op = arg_list.last().unwrap();
+                    trcx.prepare_for_closure_call(&ret_op, &closure_op, closure_args_op);
+                    translate_function_call(tcx, trcx);
                 } else {
-                    trcx.prepare_args_mapping_for_function_call(&ret_op, &args);
-                    translate_func_call(tcx, trcx, called_func_id);
+                    trcx.prepare_for_function_call(&ret_op, func_def_id, &arg_list);
+                    translate_function_call(tcx, trcx);
                 }
             }
             Some(target.map_or(vec![], |bb| vec![bb]))

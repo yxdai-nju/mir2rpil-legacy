@@ -15,8 +15,8 @@ impl ExecutionPath {
         Self { call_stack: vec![], bb_trace: vec![], visited_bbs: FxHashSet::default() }
     }
 
-    pub fn push_function(&mut self, func_name: String) {
-        self.call_stack.push(func_name);
+    pub fn push_function(&mut self, func_name: &str) {
+        self.call_stack.push(func_name.to_owned());
     }
 
     pub fn pop_function(&mut self) {
