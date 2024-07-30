@@ -16,6 +16,8 @@ use crate::shims::unix::*;
 use crate::*;
 use shims::time::system_time_to_duration;
 
+use self::fd::FlockOp;
+
 #[derive(Debug)]
 struct FileHandle {
     file: File,
@@ -124,6 +126,97 @@ impl FileDescription for FileHandle {
             // https://github.com/rust-lang/miri/issues/999#issuecomment-568920439
             // for a deeper discussion.
             Ok(Ok(()))
+        }
+    }
+
+    fn flock<'tcx>(
+        &self,
+        communicate_allowed: bool,
+        op: FlockOp,
+    ) -> InterpResult<'tcx, io::Result<()>> {
+        assert!(communicate_allowed, "isolation should have prevented even opening a file");
+        #[cfg(target_family = "unix")]
+        {
+            use std::os::fd::AsRawFd;
+
+            use FlockOp::*;
+            // We always use non-blocking call to prevent interpreter from being blocked
+            let (host_op, lock_nb) = match op {
+                SharedLock { nonblocking } => (libc::LOCK_SH | libc::LOCK_NB, nonblocking),
+                ExclusiveLock { nonblocking } => (libc::LOCK_EX | libc::LOCK_NB, nonblocking),
+                Unlock => (libc::LOCK_UN, false),
+            };
+
+            let fd = self.file.as_raw_fd();
+            let ret = unsafe { libc::flock(fd, host_op) };
+            let res = match ret {
+                0 => Ok(()),
+                -1 => {
+                    let err = io::Error::last_os_error();
+                    if !lock_nb && err.kind() == io::ErrorKind::WouldBlock {
+                        throw_unsup_format!("blocking `flock` is not currently supported");
+                    }
+                    Err(err)
+                }
+                ret => panic!("Unexpected return value from flock: {ret}"),
+            };
+            Ok(res)
+        }
+
+        #[cfg(target_family = "windows")]
+        {
+            use std::os::windows::io::AsRawHandle;
+            use windows_sys::Win32::{
+                Foundation::{ERROR_IO_PENDING, ERROR_LOCK_VIOLATION, FALSE, HANDLE, TRUE},
+                Storage::FileSystem::{
+                    LockFileEx, UnlockFile, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY,
+                },
+            };
+            let fh = self.file.as_raw_handle() as HANDLE;
+
+            use FlockOp::*;
+            let (ret, lock_nb) = match op {
+                SharedLock { nonblocking } | ExclusiveLock { nonblocking } => {
+                    // We always use non-blocking call to prevent interpreter from being blocked
+                    let mut flags = LOCKFILE_FAIL_IMMEDIATELY;
+                    if matches!(op, ExclusiveLock { .. }) {
+                        flags |= LOCKFILE_EXCLUSIVE_LOCK;
+                    }
+                    let ret = unsafe { LockFileEx(fh, flags, 0, !0, !0, &mut std::mem::zeroed()) };
+                    (ret, nonblocking)
+                }
+                Unlock => {
+                    let ret = unsafe { UnlockFile(fh, 0, 0, !0, !0) };
+                    (ret, false)
+                }
+            };
+
+            let res = match ret {
+                TRUE => Ok(()),
+                FALSE => {
+                    let mut err = io::Error::last_os_error();
+                    let code: u32 = err.raw_os_error().unwrap().try_into().unwrap();
+                    if matches!(code, ERROR_IO_PENDING | ERROR_LOCK_VIOLATION) {
+                        if lock_nb {
+                            // Replace error with a custom WouldBlock error, which later will be
+                            // mapped in the `helpers` module
+                            let desc = format!("LockFileEx wouldblock error: {err}");
+                            err = io::Error::new(io::ErrorKind::WouldBlock, desc);
+                        } else {
+                            throw_unsup_format!("blocking `flock` is not currently supported");
+                        }
+                    }
+                    Err(err)
+                }
+                _ => panic!("Unexpected return value: {ret}"),
+            };
+            Ok(res)
+        }
+
+        #[cfg(not(any(target_family = "unix", target_family = "windows")))]
+        {
+            let _ = op;
+            compile_error!("flock is supported only on UNIX and Windows hosts");
         }
     }
 
@@ -483,13 +576,13 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
 
         let communicate = this.machine.communicate();
 
-        let Some(mut file_descriptor) = this.machine.fds.get_mut(fd) else {
+        let Some(mut file_description) = this.machine.fds.get_mut(fd) else {
             return Ok(Scalar::from_i64(this.fd_not_found()?));
         };
-        let result = file_descriptor
+        let result = file_description
             .seek(communicate, seek_from)?
             .map(|offset| i64::try_from(offset).unwrap());
-        drop(file_descriptor);
+        drop(file_description);
 
         let result = this.try_unwrap_io_result(result)?;
         Ok(Scalar::from_i64(result))
@@ -1176,30 +1269,30 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
             return Ok(Scalar::from_i32(this.fd_not_found()?));
         }
 
-        let Some(file_descriptor) = this.machine.fds.get(fd) else {
+        let Some(file_description) = this.machine.fds.get(fd) else {
             return Ok(Scalar::from_i32(this.fd_not_found()?));
         };
 
         // FIXME: Support ftruncate64 for all FDs
         let FileHandle { file, writable } =
-            file_descriptor.downcast_ref::<FileHandle>().ok_or_else(|| {
+            file_description.downcast_ref::<FileHandle>().ok_or_else(|| {
                 err_unsup_format!("`ftruncate64` is only supported on file-backed file descriptors")
             })?;
 
         if *writable {
             if let Ok(length) = length.try_into() {
                 let result = file.set_len(length);
-                drop(file_descriptor);
+                drop(file_description);
                 let result = this.try_unwrap_io_result(result.map(|_| 0i32))?;
                 Ok(Scalar::from_i32(result))
             } else {
-                drop(file_descriptor);
+                drop(file_description);
                 let einval = this.eval_libc("EINVAL");
                 this.set_last_error(einval)?;
                 Ok(Scalar::from_i32(-1))
             }
         } else {
-            drop(file_descriptor);
+            drop(file_description);
             // The file is not writable
             let einval = this.eval_libc("EINVAL");
             this.set_last_error(einval)?;
@@ -1229,16 +1322,16 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
 
     fn ffullsync_fd(&mut self, fd: i32) -> InterpResult<'tcx, i32> {
         let this = self.eval_context_mut();
-        let Some(file_descriptor) = this.machine.fds.get(fd) else {
+        let Some(file_description) = this.machine.fds.get(fd) else {
             return Ok(this.fd_not_found()?);
         };
         // Only regular files support synchronization.
         let FileHandle { file, writable } =
-            file_descriptor.downcast_ref::<FileHandle>().ok_or_else(|| {
+            file_description.downcast_ref::<FileHandle>().ok_or_else(|| {
                 err_unsup_format!("`fsync` is only supported on file-backed file descriptors")
             })?;
         let io_result = maybe_sync_file(file, *writable, File::sync_all);
-        drop(file_descriptor);
+        drop(file_description);
         this.try_unwrap_io_result(io_result)
     }
 
@@ -1254,16 +1347,16 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
             return this.fd_not_found();
         }
 
-        let Some(file_descriptor) = this.machine.fds.get(fd) else {
+        let Some(file_description) = this.machine.fds.get(fd) else {
             return Ok(this.fd_not_found()?);
         };
         // Only regular files support synchronization.
         let FileHandle { file, writable } =
-            file_descriptor.downcast_ref::<FileHandle>().ok_or_else(|| {
+            file_description.downcast_ref::<FileHandle>().ok_or_else(|| {
                 err_unsup_format!("`fdatasync` is only supported on file-backed file descriptors")
             })?;
         let io_result = maybe_sync_file(file, *writable, File::sync_data);
-        drop(file_descriptor);
+        drop(file_description);
         this.try_unwrap_io_result(io_result)
     }
 
@@ -1302,18 +1395,18 @@ pub trait EvalContextExt<'tcx>: crate::MiriInterpCxExt<'tcx> {
             return Ok(Scalar::from_i32(this.fd_not_found()?));
         }
 
-        let Some(file_descriptor) = this.machine.fds.get(fd) else {
+        let Some(file_description) = this.machine.fds.get(fd) else {
             return Ok(Scalar::from_i32(this.fd_not_found()?));
         };
         // Only regular files support synchronization.
         let FileHandle { file, writable } =
-            file_descriptor.downcast_ref::<FileHandle>().ok_or_else(|| {
+            file_description.downcast_ref::<FileHandle>().ok_or_else(|| {
                 err_unsup_format!(
                     "`sync_data_range` is only supported on file-backed file descriptors"
                 )
             })?;
         let io_result = maybe_sync_file(file, *writable, File::sync_data);
-        drop(file_descriptor);
+        drop(file_description);
         Ok(Scalar::from_i32(this.try_unwrap_io_result(io_result)?))
     }
 
@@ -1609,11 +1702,11 @@ impl FileMetadata {
         ecx: &mut MiriInterpCx<'tcx>,
         fd: i32,
     ) -> InterpResult<'tcx, Option<FileMetadata>> {
-        let Some(file_descriptor) = ecx.machine.fds.get(fd) else {
+        let Some(file_description) = ecx.machine.fds.get(fd) else {
             return ecx.fd_not_found().map(|_: i32| None);
         };
 
-        let file = &file_descriptor
+        let file = &file_description
             .downcast_ref::<FileHandle>()
             .ok_or_else(|| {
                 err_unsup_format!(
@@ -1623,7 +1716,7 @@ impl FileMetadata {
             .file;
 
         let metadata = file.metadata();
-        drop(file_descriptor);
+        drop(file_description);
         FileMetadata::from_meta(ecx, metadata)
     }
 
