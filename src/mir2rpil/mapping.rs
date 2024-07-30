@@ -2,6 +2,8 @@ use rustc_data_structures::fx::FxHashMap;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir;
 
+use std::fmt;
+
 use super::rpil::{LowRpilOp, PlaceDesc};
 
 #[derive(Clone)]
@@ -80,7 +82,7 @@ impl LowRpilMapping {
             self.mapping.insert(k, v);
         }
 
-        self.reduced_rpil_op(closure_op).get_inner_closure().unwrap()
+        self.reduced_rpil_op(closure_op).assume_closure().unwrap()
     }
 
     pub fn insert_mappings_for_function_call<'tcx>(
@@ -182,5 +184,46 @@ impl LowRpilMapping {
         for k in to_be_removed {
             self.mapping.remove(&k);
         }
+    }
+
+    pub fn cleaned_up(&self, argc: usize) -> FxHashMap<LowRpilOp, LowRpilOp> {
+        let mut mapping = self.mapping.clone();
+
+        // Insert
+        let mut to_be_inserted = vec![];
+        for (key, val) in mapping.iter() {
+            let reduced_val = self.reduced_rpil_op_nonstructural(val);
+            match (key.origin_var_index(), reduced_val.origin_var_index()) {
+                (Some(key_index), Some(val_index)) if key_index <= argc && val_index <= argc => {
+                    to_be_inserted.push((key.clone(), reduced_val));
+                }
+                _ => {}
+            };
+        }
+        for (k, v) in to_be_inserted {
+            mapping.insert(k, v);
+        }
+
+        // Remove
+        let mut to_be_removed = vec![];
+        for (key, val) in mapping.iter() {
+            match (key.origin_var_index(), val.origin_var_index()) {
+                (Some(key_index), Some(val_index)) if key_index <= argc && val_index <= argc => {}
+                _ => {
+                    to_be_removed.push(key.clone());
+                }
+            };
+        }
+        for k in to_be_removed {
+            mapping.remove(&k);
+        }
+
+        mapping
+    }
+}
+
+impl fmt::Debug for LowRpilMapping {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.mapping)
     }
 }

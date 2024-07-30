@@ -33,11 +33,11 @@ impl fmt::Debug for PlaceDesc {
 }
 
 impl LowRpilOp {
-    pub fn get_inner_closure(&self) -> Option<DefId> {
+    pub fn assume_closure(&self) -> Option<DefId> {
         use LowRpilOp::*;
         match self {
             Closure { def_id } => Some(*def_id),
-            Ref(inner_op) | MutRef(inner_op) => inner_op.get_inner_closure(),
+            Ref(inner_op) | MutRef(inner_op) => inner_op.assume_closure(),
             _ => None,
         }
     }
@@ -51,7 +51,15 @@ impl LowRpilOp {
         }
     }
 
-    pub fn origin(&self) -> LowRpilOp {
+    pub fn origin_var_index(&self) -> Option<usize> {
+        use LowRpilOp::*;
+        match self.origin() {
+            Var { index, .. } => Some(index),
+            _ => None,
+        }
+    }
+
+    fn origin(&self) -> LowRpilOp {
         use LowRpilOp::*;
         match self {
             Var { .. } | Closure { .. } => self.clone(),
@@ -125,29 +133,6 @@ impl LowRpilOp {
     }
 }
 
-pub enum RpilInst {
-    Bind(LowRpilOp, LowRpilOp),
-    Borrow(LowRpilOp, LowRpilOp),
-    BorrowMut(LowRpilOp, LowRpilOp),
-    Move(LowRpilOp),
-    DerefMove(LowRpilOp),
-    DerefPin(LowRpilOp),
-}
-
-impl fmt::Debug for RpilInst {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use RpilInst::*;
-        match self {
-            Bind(op1, op2) => write!(f, "BIND {:?}, {:?}", op1, op2),
-            Borrow(op1, op2) => write!(f, "BORROW {:?}, {:?}", op1, op2),
-            BorrowMut(op1, op2) => write!(f, "BORROW-MUT {:?}, {:?}", op1, op2),
-            Move(op) => write!(f, "MOVE {:?}", op),
-            DerefMove(op) => write!(f, "DEREF-MOVE {:?}", op),
-            DerefPin(op) => write!(f, "DEREF-PIN {:?}", op),
-        }
-    }
-}
-
 #[inline(always)]
 fn project_rpil_place<'tcx>(place: &mir::Place<'tcx>, depth: usize) -> LowRpilOp {
     project_rpil_place_(place, place.projection.len(), depth)
@@ -186,6 +171,29 @@ fn project_rpil_place_<'tcx>(place: &mir::Place<'tcx>, idx: usize, depth: usize)
             let x = discriminant(rplace);
             println!("[ProjectionElem-{:?}] Unknown `{:?}`", x, rplace);
             unimplemented!()
+        }
+    }
+}
+
+pub enum RpilInst {
+    Bind(LowRpilOp, LowRpilOp),
+    Borrow(LowRpilOp, LowRpilOp),
+    BorrowMut(LowRpilOp, LowRpilOp),
+    Move(LowRpilOp),
+    DerefMove(LowRpilOp),
+    DerefPin(LowRpilOp),
+}
+
+impl fmt::Debug for RpilInst {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use RpilInst::*;
+        match self {
+            Bind(op1, op2) => write!(f, "BIND {:?}, {:?}", op1, op2),
+            Borrow(op1, op2) => write!(f, "BORROW {:?}, {:?}", op1, op2),
+            BorrowMut(op1, op2) => write!(f, "BORROW-MUT {:?}, {:?}", op1, op2),
+            Move(op) => write!(f, "MOVE {:?}", op),
+            DerefMove(op) => write!(f, "DEREF-MOVE {:?}", op),
+            DerefPin(op) => write!(f, "DEREF-PIN {:?}", op),
         }
     }
 }

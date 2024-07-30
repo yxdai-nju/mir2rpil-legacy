@@ -6,6 +6,7 @@ use std::mem::discriminant;
 
 use super::context::TranslationCtxt;
 use super::debug;
+use super::mapping::LowRpilMapping;
 use super::rpil::{LowRpilInst, LowRpilOp, PlaceDesc, RpilInst};
 
 pub fn translate_function_def<'tcx>(tcx: TyCtxt<'tcx>, func_def_id: DefId) -> Vec<Vec<RpilInst>> {
@@ -13,6 +14,7 @@ pub fn translate_function_def<'tcx>(tcx: TyCtxt<'tcx>, func_def_id: DefId) -> Ve
 
     let func_name = tcx.def_path_str(func_def_id);
     let func_idx = func_def_id.index.as_u32();
+    let func_argc = tcx.fn_arg_names(func_def_id).len();
     if !tcx.is_mir_available(func_def_id) {
         println!("    (empty)");
         return vec![vec![]];
@@ -24,18 +26,27 @@ pub fn translate_function_def<'tcx>(tcx: TyCtxt<'tcx>, func_def_id: DefId) -> Ve
 
     let func_body = tcx.optimized_mir(func_def_id);
     let bb0 = func_body.basic_blocks.start_node();
-    translate_basic_block(tcx, &mut trcx, func_body, bb0);
-    // println!("Number of variants: {}", contexts.len());
+    let mut snapshots = vec![];
+    translate_basic_block(tcx, &mut trcx, func_body, bb0, &mut snapshots);
+    trcx.gather_variants(snapshots);
 
     println!("===== Leaving function `{}` {} =====", func_name, func_idx);
 
-    // todo!("return real results");
-    vec![vec![]]
+    let mappings = trcx.take_snapshot();
+    let mut variants = Vec::with_capacity(mappings.len());
+    for trcx_variant in mappings.iter() {
+        let mapping = trcx_variant.cleaned_up(func_argc);
+        let mut rpil_insts = Vec::with_capacity(mapping.len());
+        for (key, val) in mapping.iter() {
+            rpil_insts.push(RpilInst::Bind(key.clone(), val.clone()));
+        }
+        variants.push(rpil_insts);
+    }
+    variants
 }
 
 fn translate_function_call<'tcx>(tcx: TyCtxt<'tcx>, trcx: &mut TranslationCtxt) {
-    trcx.apply_to_each_variant(|trcx_variant| {
-        let def_id = trcx_variant.function_to_be_called.unwrap();
+    trcx.translate_function_call_with_each_variant(|trcx_variant, def_id| {
         debug::log_func_mir(tcx, def_id);
 
         let func_name = tcx.def_path_str(def_id);
@@ -50,7 +61,9 @@ fn translate_function_call<'tcx>(tcx: TyCtxt<'tcx>, trcx: &mut TranslationCtxt) 
 
         let func_body = tcx.optimized_mir(def_id);
         let bb0 = func_body.basic_blocks.start_node();
-        translate_basic_block(tcx, trcx_variant, func_body, bb0);
+        let mut snapshots = vec![];
+        translate_basic_block(tcx, trcx_variant, func_body, bb0, &mut snapshots);
+        trcx_variant.gather_variants(snapshots);
 
         trcx_variant.leave_function();
         println!("===== Leaving function `{}` {} =====", func_name, func_idx);
@@ -62,9 +75,10 @@ fn translate_basic_block<'tcx>(
     trcx: &mut TranslationCtxt,
     func_body: &mir::Body<'tcx>,
     bb: mir::BasicBlock,
+    snapshots: &mut Vec<Vec<LowRpilMapping>>,
 ) {
     trcx.enter_basic_block(bb);
-    println!("{:?}", trcx.path);
+    trcx.debug_path();
 
     let bb_data = func_body.basic_blocks.get(bb).unwrap();
     for statement in &bb_data.statements {
@@ -77,19 +91,19 @@ fn translate_basic_block<'tcx>(
         Some(ref next_bbs) => {
             println!("Next: {:?}", next_bbs);
             println!("-----");
-            let mappings_snapshot = trcx.mappings.clone();
+            let mappings_snapshot = trcx.take_snapshot();
             for bb in next_bbs.iter().copied() {
-                if !trcx.path.is_bb_visited(bb) {
-                    translate_basic_block(tcx, trcx, func_body, bb);
-                    trcx.mappings = mappings_snapshot.clone();
+                if !trcx.is_bb_visited(bb) {
+                    translate_basic_block(tcx, trcx, func_body, bb, snapshots);
+                    trcx.recover_from_snapshot(mappings_snapshot.clone());
                 }
             }
-            trcx.merge_variants();
         }
         None => {
             println!("Next: return");
             println!("-----");
-            trcx.add_variant();
+            let returning_mappings_snapshot = trcx.take_snapshot();
+            snapshots.push(returning_mappings_snapshot);
         }
     };
 
