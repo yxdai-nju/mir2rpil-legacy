@@ -1,3 +1,9 @@
+# MIR2RPIL
+
+⚠️ This repository has been superseded by [`yxdai-nju/mir2rpil`](https://github.com/yxdai-nju/mir2rpil).
+
+---
+
 # Miri
 
 Miri is an [Undefined Behavior][reference-ub] detection tool for Rust. It can run binaries and test
